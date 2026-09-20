@@ -1,7 +1,9 @@
 package netlen
 
 import (
+	"math"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/embeddedci-com/pcb-autorouter/board"
@@ -236,5 +238,79 @@ func TestJoinedFindsTheRealSeriesPartsOnTheDemoBoard(t *testing.T) {
 		if j := e.Joined(n); j.Split() {
 			t.Errorf("%s walked into %v through %v", n, j.Segments[1:], j.Through)
 		}
+	}
+}
+
+// A common-mode filter or ESD array carries several signals through one
+// package, and each one has to come out on its own pad. This is the shape of
+// the real thing: two rows of four facing each other with the grounds down the
+// middle, a processor on one side and a camera connector on the other.
+//
+// CK_P runs 11.75 mm into the filter and 14.25 mm out of it; D0_P runs 12.75 mm
+// in and 11.25 mm out. Measured per net, the pair looks 1 mm apart when it is
+// really 1 mm the other way, which is the skew the matching exists to find.
+func filterBoard(t *testing.T) *board.Board {
+	t.Helper()
+	b, err := board.Parse([]byte(filterBoardSrc), "filter.kicad_pcb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+func TestJoinedCrossesAMultiChannelFilter(t *testing.T) {
+	e := New(filterBoard(t))
+	for _, c := range []struct {
+		net  string
+		want float64
+		far  string
+	}{
+		{"/MIPI/CSI.CK_P", 26.0, "/MIPI/CSI.CKcon_P"},
+		{"/MIPI/CSI.D0_P", 24.0, "/MIPI/CSI.D0con_P"},
+		{"/MIPI/CSI.CKcon_P", 26.0, "/MIPI/CSI.CK_P"},
+	} {
+		j := e.Joined(c.net)
+		if !j.Split() || !slices.Contains(j.Segments, c.far) {
+			t.Errorf("%s: segments %v, want it joined to %s", c.net, j.Segments, c.far)
+		}
+		if len(j.Segments) != 2 {
+			t.Errorf("%s: segments %v, want only its own two", c.net, j.Segments)
+		}
+		if math.Abs(j.LengthMM-c.want) > 0.01 {
+			t.Errorf("%s: %.3f mm, want %.3f", c.net, j.LengthMM, c.want)
+		}
+		if !slices.Contains(j.Through, "L10") {
+			t.Errorf("%s: through %v, want L10", c.net, j.Through)
+		}
+		if !j.Found || !j.Complete {
+			t.Errorf("%s: found=%v complete=%v", c.net, j.Found, j.Complete)
+		}
+	}
+}
+
+// The name to call the whole signal by is the processor's side, not the
+// connector's, whichever end is asked about.
+func TestJoinedNamesTheSignalAtTheBiggestPart(t *testing.T) {
+	e := New(filterBoard(t))
+	for _, net := range []string{"/MIPI/CSI.CK_P", "/MIPI/CSI.CKcon_P"} {
+		if got := e.Joined(net).Main; got != "/MIPI/CSI.CK_P" {
+			t.Errorf("Joined(%s).Main = %q, want the controller's side", net, got)
+		}
+	}
+}
+
+// Pads that do not face each other across the package are not a way through:
+// which pad continues which would be a guess, and a wrong guess joins two
+// signals that share nothing but a package.
+func TestJoinedRefusesAPartWhosePadsDoNotFaceEachOther(t *testing.T) {
+	src := strings.Replace(filterBoardSrc,
+		`(pad "C1" smd circle (at -0.75 0.5)`,
+		`(pad "C1" smd circle (at -0.75 -0.5)`, 1)
+	b, err := board.Parse([]byte(src), "filter.kicad_pcb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j := New(b).Joined("/MIPI/CSI.CK_P"); j.Split() {
+		t.Errorf("joined anyway: %v through %v", j.Segments, j.Through)
 	}
 }

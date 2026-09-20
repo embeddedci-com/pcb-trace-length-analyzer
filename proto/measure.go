@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 
 	"github.com/embeddedci-com/pcb-autorouter/netlen"
 )
@@ -133,6 +134,37 @@ func (i *Interface) Assess(m Measurer) *Assessment {
 		}
 		return j.Joined(net).Through
 	}
+	// One signal, one row. Where a series part splits a signal and the
+	// schematic names both sides -- "CSI.D1_P" into a filter, "CSI.D1con_P"
+	// out of it -- detection sees two nets and both measure the whole signal,
+	// so listing both would show it twice and count it twice against the
+	// tolerance. The name kept is the one on the controller's side.
+	sameSignal := func(nets []string) map[string]bool {
+		drop := map[string]bool{}
+		if !canJoin {
+			return drop
+		}
+		keep := map[string]string{}
+		for _, net := range nets {
+			x := j.Joined(net)
+			if !x.Split() {
+				continue
+			}
+			segs := append([]string{}, x.Segments...)
+			sort.Strings(segs)
+			key := strings.Join(segs, "\x00")
+			if held, ok := keep[key]; ok {
+				if net == x.Main {
+					drop[held], keep[key] = true, net
+				} else {
+					drop[net] = true
+				}
+				continue
+			}
+			keep[key] = net
+		}
+		return drop
+	}
 
 	seen := map[string]bool{}
 	for _, net := range i.Nets {
@@ -142,7 +174,11 @@ func (i *Interface) Assess(m Measurer) *Assessment {
 		seen[net] = true
 	}
 
+	dropPair := sameSignal(pairNets(i.Pairs))
 	for _, p := range i.Pairs {
+		if dropPair[p.P] || dropPair[p.N] {
+			continue
+		}
 		pl, pok := length(p.P)
 		nl, nok := length(p.N)
 		s := PairSkew{
@@ -167,7 +203,11 @@ func (i *Interface) Assess(m Measurer) *Assessment {
 			ref, refOK = length(g.Reference)
 		}
 		lo, hi := math.Inf(1), math.Inf(-1)
+		drop := sameSignal(g.Members)
 		for _, net := range g.Members {
+			if drop[net] {
+				continue
+			}
 			l, ok := length(net)
 			ms := MemberSkew{Net: net, LengthMM: l, Routed: ok, Through: through(net)}
 			if ok {
@@ -207,6 +247,15 @@ func (i *Interface) Assess(m Measurer) *Assessment {
 
 	a.Summary = a.summarise(i)
 	return a
+}
+
+// pairNets is every net of a list of pairs, P before N.
+func pairNets(pairs []Pair) []string {
+	out := make([]string, 0, 2*len(pairs))
+	for _, p := range pairs {
+		out = append(out, p.P, p.N)
+	}
+	return out
 }
 
 func (a *Assessment) summarise(i *Interface) string {

@@ -463,3 +463,162 @@ func TestAPairGroupListsBothHalves(t *testing.T) {
 		t.Errorf("reference row %.3f mm, group says %.3f", ref.LengthMM, g.ReferenceMM)
 	}
 }
+
+// A signal split by a filter is one row that carries both its nets, so
+// selecting it in the editor highlights all the copper its length was measured
+// over. The demo board's camera lanes each run through a common-mode filter.
+func TestASplitSignalCarriesItsSegments(t *testing.T) {
+	h := newHarness(t)
+	up := decode[SessionResponse](t, h.upload(true, true))
+	for _, d := range up.Analysis.Interfaces {
+		if d.Kind != "mipi" {
+			continue
+		}
+		rows := 0
+		for _, g := range d.Groups {
+			for _, m := range g.Rows {
+				rows++
+				if strings.Contains(m.Net, "con_") {
+					t.Errorf("%s lists the filter's far side %s as its own row", g.Name, m.Net)
+				}
+				if len(m.Segments) != 2 {
+					t.Errorf("%s: segments %v, want the net and its far side", m.Net, m.Segments)
+				}
+				if len(m.Through) == 0 {
+					t.Errorf("%s: no part named, but it runs through the filter", m.Net)
+				}
+			}
+		}
+		if rows == 0 {
+			t.Error("no measured rows on the camera interface")
+		}
+		return
+	}
+	t.Skip("no MIPI interface on the demo board")
+}
+
+// A camera link through a common-mode filter, the shape of a real one: the
+// clock and one data lane run from the processor into a filter and out of it
+// to the connector, so every signal is two nets.
+//
+// The clock's halves come to 32 mm and 34 mm, so the lane is matched to their
+// mean, 33 mm. The data lane is 31 mm, two short of it.
+//
+// It used to take the reference's whole length and the other half's near side
+// only: 32 mm and 11.25 mm, a target of 21.625 mm that is neither half and
+// shorter than both, so a lane needing 2 mm added was told to shorten by 8.875.
+func mipiThroughFilter() []byte {
+	return []byte(`(kicad_pcb
+	(version 20260206)
+	(generator "pcb-trace-length-analyzer-test")
+	(paper "A4")
+	(layers (0 "F.Cu" signal) (2 "B.Cu" signal) (25 "Edge.Cuts" user))
+	(setup (stackup
+		(layer "F.Cu" (type "copper") (thickness 0.035))
+		(layer "dielectric 1" (type "core") (thickness 1.51) (material "FR4") (epsilon_r 4.5))
+		(layer "B.Cu" (type "copper") (thickness 0.035))
+	))
+	(gr_rect (start 0 0) (end 40 30) (stroke (width 0.05) (type default)) (fill none) (layer "Edge.Cuts") (uuid "dddddddd-4444-4000-8000-000000000047"))
+	(footprint "t:u1" (layer "F.Cu") (uuid "dddddddd-4444-4000-8000-000000000048") (at 10 10) (attr smd)
+		(property "Reference" "U1" (at 0 0) (layer "F.Cu") (uuid "dddddddd-4444-4000-8000-000000000049"))
+		(pad "A1" smd circle (at 0 0) (size 0.3 0.3) (layers "F.Cu") (net "/MIPI/CSI.CK_P") (uuid "dddddddd-4444-4000-8000-000000000001"))
+		(pad "A2" smd circle (at 0 1) (size 0.3 0.3) (layers "F.Cu") (net "/MIPI/CSI.CK_N") (uuid "dddddddd-4444-4000-8000-000000000002"))
+		(pad "A3" smd circle (at 0 2) (size 0.3 0.3) (layers "F.Cu") (net "/MIPI/CSI.D0_P") (uuid "dddddddd-4444-4000-8000-000000000003"))
+		(pad "A4" smd circle (at 0 3) (size 0.3 0.3) (layers "F.Cu") (net "/MIPI/CSI.D0_N") (uuid "dddddddd-4444-4000-8000-000000000004"))
+		(pad "G0" smd circle (at -1 0.0) (size 0.3 0.3) (layers "F.Cu") (net "GND") (uuid "dddddddd-4444-4000-8000-000000000005"))
+		(pad "G1" smd circle (at -1 0.5) (size 0.3 0.3) (layers "F.Cu") (net "GND") (uuid "dddddddd-4444-4000-8000-000000000006"))
+		(pad "G2" smd circle (at -1 1.0) (size 0.3 0.3) (layers "F.Cu") (net "GND") (uuid "dddddddd-4444-4000-8000-000000000007"))
+		(pad "G3" smd circle (at -1 1.5) (size 0.3 0.3) (layers "F.Cu") (net "GND") (uuid "dddddddd-4444-4000-8000-000000000008"))
+		(pad "G4" smd circle (at -1 2.0) (size 0.3 0.3) (layers "F.Cu") (net "GND") (uuid "dddddddd-4444-4000-8000-000000000009"))
+		(pad "G5" smd circle (at -1 2.5) (size 0.3 0.3) (layers "F.Cu") (net "GND") (uuid "dddddddd-4444-4000-8000-000000000010"))
+		(pad "G6" smd circle (at -1 3.0) (size 0.3 0.3) (layers "F.Cu") (net "GND") (uuid "dddddddd-4444-4000-8000-000000000011"))
+		(pad "G7" smd circle (at -1 3.5) (size 0.3 0.3) (layers "F.Cu") (net "GND") (uuid "dddddddd-4444-4000-8000-000000000012"))
+	)
+	(footprint "t:l1" (layer "F.Cu") (uuid "dddddddd-4444-4000-8000-000000000050") (at 20 10) (attr smd)
+		(property "Reference" "L1" (at 0 0) (layer "F.Cu") (uuid "dddddddd-4444-4000-8000-000000000051"))
+		(pad "A1" smd circle (at -0.75 -0.5) (size 0.3 0.3) (layers "F.Cu") (net "/MIPI/CSI.CK_P") (uuid "dddddddd-4444-4000-8000-000000000013"))
+		(pad "A2" smd circle (at -0.25 -0.5) (size 0.3 0.3) (layers "F.Cu") (net "/MIPI/CSI.CK_N") (uuid "dddddddd-4444-4000-8000-000000000014"))
+		(pad "A3" smd circle (at 0.25 -0.5) (size 0.3 0.3) (layers "F.Cu") (net "/MIPI/CSI.D0_P") (uuid "dddddddd-4444-4000-8000-000000000015"))
+		(pad "A4" smd circle (at 0.75 -0.5) (size 0.3 0.3) (layers "F.Cu") (net "/MIPI/CSI.D0_N") (uuid "dddddddd-4444-4000-8000-000000000016"))
+		(pad "B1" smd circle (at -0.5 0) (size 0.3 0.3) (layers "F.Cu") (net "GND") (uuid "dddddddd-4444-4000-8000-000000000017"))
+		(pad "B2" smd circle (at 0.5 0) (size 0.3 0.3) (layers "F.Cu") (net "GND") (uuid "dddddddd-4444-4000-8000-000000000018"))
+		(pad "C1" smd circle (at -0.75 0.5) (size 0.3 0.3) (layers "F.Cu") (net "/MIPI/CSI.CKcon_P") (uuid "dddddddd-4444-4000-8000-000000000019"))
+		(pad "C2" smd circle (at -0.25 0.5) (size 0.3 0.3) (layers "F.Cu") (net "/MIPI/CSI.CKcon_N") (uuid "dddddddd-4444-4000-8000-000000000020"))
+		(pad "C3" smd circle (at 0.25 0.5) (size 0.3 0.3) (layers "F.Cu") (net "/MIPI/CSI.D0con_P") (uuid "dddddddd-4444-4000-8000-000000000021"))
+		(pad "C4" smd circle (at 0.75 0.5) (size 0.3 0.3) (layers "F.Cu") (net "/MIPI/CSI.D0con_N") (uuid "dddddddd-4444-4000-8000-000000000022"))
+	)
+	(footprint "t:j1" (layer "F.Cu") (uuid "dddddddd-4444-4000-8000-000000000052") (at 30 10) (attr smd)
+		(property "Reference" "J1" (at 0 0) (layer "F.Cu") (uuid "dddddddd-4444-4000-8000-000000000053"))
+		(pad "1" smd circle (at 0 0) (size 0.3 0.3) (layers "F.Cu") (net "/MIPI/CSI.CKcon_P") (uuid "dddddddd-4444-4000-8000-000000000023"))
+		(pad "2" smd circle (at 0 1) (size 0.3 0.3) (layers "F.Cu") (net "/MIPI/CSI.CKcon_N") (uuid "dddddddd-4444-4000-8000-000000000024"))
+		(pad "3" smd circle (at 0 2) (size 0.3 0.3) (layers "F.Cu") (net "/MIPI/CSI.D0con_P") (uuid "dddddddd-4444-4000-8000-000000000025"))
+		(pad "4" smd circle (at 0 3) (size 0.3 0.3) (layers "F.Cu") (net "/MIPI/CSI.D0con_N") (uuid "dddddddd-4444-4000-8000-000000000026"))
+	)
+	(segment (start 10 10) (end 19.25 10) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.CK_P") (uuid "dddddddd-4444-4000-8000-000000000027"))
+	(segment (start 19.25 10) (end 19.25 9.5) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.CK_P") (uuid "dddddddd-4444-4000-8000-000000000028"))
+	(segment (start 19.25 10.5) (end 19.25 16) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.CKcon_P") (uuid "dddddddd-4444-4000-8000-000000000029"))
+	(segment (start 19.25 16) (end 30 16) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.CKcon_P") (uuid "dddddddd-4444-4000-8000-000000000030"))
+	(segment (start 30 16) (end 30 10) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.CKcon_P") (uuid "dddddddd-4444-4000-8000-000000000031"))
+	(segment (start 10 11) (end 19.75 11) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.CK_N") (uuid "dddddddd-4444-4000-8000-000000000032"))
+	(segment (start 19.75 11) (end 19.75 9.5) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.CK_N") (uuid "dddddddd-4444-4000-8000-000000000033"))
+	(segment (start 19.75 10.5) (end 19.75 17) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.CKcon_N") (uuid "dddddddd-4444-4000-8000-000000000034"))
+	(segment (start 19.75 17) (end 30 17) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.CKcon_N") (uuid "dddddddd-4444-4000-8000-000000000035"))
+	(segment (start 30 17) (end 30 11) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.CKcon_N") (uuid "dddddddd-4444-4000-8000-000000000036"))
+	(segment (start 10 12) (end 20.25 12) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.D0_P") (uuid "dddddddd-4444-4000-8000-000000000037"))
+	(segment (start 20.25 12) (end 20.25 9.5) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.D0_P") (uuid "dddddddd-4444-4000-8000-000000000038"))
+	(segment (start 20.25 10.5) (end 20.25 15.5) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.D0con_P") (uuid "dddddddd-4444-4000-8000-000000000039"))
+	(segment (start 20.25 15.5) (end 30 15.5) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.D0con_P") (uuid "dddddddd-4444-4000-8000-000000000040"))
+	(segment (start 30 15.5) (end 30 12) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.D0con_P") (uuid "dddddddd-4444-4000-8000-000000000041"))
+	(segment (start 10 13) (end 20.75 13) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.D0_N") (uuid "dddddddd-4444-4000-8000-000000000042"))
+	(segment (start 20.75 13) (end 20.75 9.5) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.D0_N") (uuid "dddddddd-4444-4000-8000-000000000043"))
+	(segment (start 20.75 10.5) (end 20.75 19) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.D0con_N") (uuid "dddddddd-4444-4000-8000-000000000044"))
+	(segment (start 20.75 19) (end 30 19) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.D0con_N") (uuid "dddddddd-4444-4000-8000-000000000045"))
+	(segment (start 30 19) (end 30 13) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.D0con_N") (uuid "dddddddd-4444-4000-8000-000000000046"))
+)
+`)
+}
+
+func TestALaneShorterThanItsClockIsToldToAddLength(t *testing.T) {
+	h := newHarness(t)
+	up := decode[SessionResponse](t, h.uploadBytes("camera.kicad_pcb", mipiThroughFilter()))
+
+	var mipi *DetectedInterface
+	for i := range up.Analysis.Interfaces {
+		if up.Analysis.Interfaces[i].Kind == "mipi" {
+			mipi = &up.Analysis.Interfaces[i]
+		}
+	}
+	if mipi == nil {
+		t.Fatalf("no camera interface found: %+v", up.Analysis.Interfaces)
+	}
+	var lanes *GroupSkewInfo
+	for i := range mipi.Groups {
+		if len(mipi.Groups[i].Rows) > 0 && mipi.Groups[i].Reference == "CSI.CK_P / CSI.CK_N" {
+			lanes = &mipi.Groups[i]
+		}
+	}
+	if lanes == nil {
+		t.Fatalf("no group matched to the clock pair: %+v", mipi.Groups)
+	}
+	// The mean of the two halves, both measured across the filter.
+	if math.Abs(lanes.TargetMM-33) > 0.01 {
+		t.Errorf("target %.3f mm, want 33 (the mean of 32 and 34)", lanes.TargetMM)
+	}
+	for _, m := range lanes.Rows {
+		if m.Net != "/MIPI/CSI.D0_P" {
+			continue
+		}
+		if math.Abs(m.LengthMM-31) > 0.01 {
+			t.Errorf("%s is %.3f mm, want 31 across the filter", m.Net, m.LengthMM)
+		}
+		if math.Abs(m.DeviationMM+2) > 0.01 {
+			t.Errorf("%s deviation %.3f mm, want -2 against the target", m.Net, m.DeviationMM)
+		}
+		if m.NeedMM <= 0 || m.ExcessMM > 0 {
+			t.Errorf("%s: need %.3f, excess %.3f; short of the target asks for length",
+				m.Net, m.NeedMM, m.ExcessMM)
+		}
+		return
+	}
+	t.Errorf("the data lane is not in the group: %+v", lanes.Rows)
+}

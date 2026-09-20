@@ -220,6 +220,68 @@ describe('ProtocolSections', () => {
     await waitFor(() => expect(host.selectNets).toHaveBeenCalledWith(['/eth/RXD1']))
   })
 
+  // A filter or a series resistor splits a signal across two nets, and the
+  // length shown is the sum of both. Selecting one of them would highlight
+  // half of what was measured.
+  it('selects every net a split signal runs on', async () => {
+    const user = userEvent.setup()
+    const host = fakeHost()
+    const rows = [
+      { net: '/mipi/CSI.D1_P', label: 'D1_P', role: '', routed: true, length_mm: 60, delay_ps: 0, deviation_mm: 22, need_mm: 22, need_ps: 0, in_tolerance: false, headroom_mm: 0, needs_reroute: false, through: ['L11'], segments: ['/mipi/CSI.D1_P', '/mipi/CSI.D1con_P'] },
+      { net: '/mipi/CSI.CK_P', label: 'CK_P', role: 'reference', routed: true, length_mm: 82, delay_ps: 0, deviation_mm: 0, need_mm: 0, need_ps: 0, in_tolerance: true, headroom_mm: 0, needs_reroute: false },
+    ]
+    renderUI(
+      <HostProvider host={host}>
+        <ProtocolSections
+          open={['Ethernet RGMII (ETH1)']}
+          interfaces={[
+            iface({
+              groups: [
+                { name: 'data lanes to clock', reference: 'CSI.CK_P', reference_mm: 82, spread_mm: 22, limit_mm: 0.5, out_of_tolerance: 1, unroutable: 0, members: 2, rows },
+              ],
+            }),
+          ]}
+        />
+      </HostProvider>,
+    )
+    await user.click(screen.getByRole('button', { name: /Select the ones out/ }))
+    await waitFor(() =>
+      expect(host.selectNets).toHaveBeenCalledWith(['/mipi/CSI.D1_P', '/mipi/CSI.D1con_P']),
+    )
+
+    // And the same from the net's own name.
+    await user.click(screen.getByRole('button', { name: 'D1_P' }))
+    await waitFor(() =>
+      expect(host.selectNets).toHaveBeenLastCalledWith(['/mipi/CSI.D1_P', '/mipi/CSI.D1con_P']),
+    )
+  })
+
+  // The rows are measured against the target, and where the reference is a
+  // pair that is the mean of its halves. Showing one half above deviations
+  // taken from the mean made every row read as out by the difference.
+  it('shows the length the rows are actually measured against', () => {
+    const rows = [
+      { net: '/mipi/CSI.D0_P', label: 'D0_P', role: '', routed: true, length_mm: 35.631, delay_ps: 0, deviation_mm: -1.797, need_mm: 1.297, need_ps: 0, in_tolerance: false, headroom_mm: 0, needs_reroute: false },
+    ]
+    renderUI(
+      <ProtocolSections
+        open={['Ethernet RGMII (ETH1)']}
+        interfaces={[
+          iface({
+            groups: [
+              { name: 'data lanes to clock', reference: 'CSI.CK_P / CSI.CK_N', reference_mm: 36.562, target_mm: 37.428, spread_mm: 2.187, limit_mm: 0.5, out_of_tolerance: 1, unroutable: 0, members: 1, rows },
+            ],
+          }),
+        ]}
+      />,
+    )
+    expect(screen.getByText('37.428 mm')).toBeInTheDocument()
+    expect(screen.queryByText('36.562 mm')).not.toBeInTheDocument()
+    expect(screen.getByText('(the mean of the pair)')).toBeInTheDocument()
+    // Shorter than the target asks for length, never for shortening.
+    expect(screen.getByText('1.297 mm')).toBeInTheDocument()
+  })
+
   it('leaves out the planner’s own interface and anything with nothing measured', () => {
     renderUI(
       <ProtocolSections

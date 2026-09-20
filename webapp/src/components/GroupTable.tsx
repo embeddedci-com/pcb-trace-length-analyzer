@@ -177,17 +177,15 @@ export function GroupTable({
         {/* The target, and what it is made of, before any row: every offset in
             the table is against this one number, and a reader who cannot see
             where it comes from cannot tell whether an offset is right. */}
-        <Group gap="lg" align="flex-end" wrap="wrap">
-          <div>
-            <Text size="xs" c="dimmed" tt="uppercase">
-              Target
-            </Text>
+        <div>
+          <Text size="xs" c="dimmed" tt="uppercase">
+            Target
+          </Text>
+          <Group gap="xs" align="baseline" wrap="wrap">
             <Text size="lg" fw={700} ff="monospace" style={NOWRAP}>
               {mm(group.target_mm)}
             </Text>
-          </div>
-          <div style={{ flex: 1, minWidth: 220 }}>
-            <Text size="sm" c="dimmed">
+            <Text size="sm" c="dimmed" style={{ flex: 1, minWidth: 220 }}>
               {halves.length === 2 ? (
                 <>
                   the mean of {halves[0].label} ({mm(halves[0].length_mm)}) and {halves[1].label} (
@@ -203,8 +201,8 @@ export function GroupTable({
               {Math.abs(offset) > 1e-6 ? `, with the clock offset ${signedMM(offset)}` : ''}
               {`; tolerance ±${mm(group.tolerance_mm)}`}
             </Text>
-          </div>
-        </Group>
+          </Group>
+        </div>
 
         {onTolerance && (
           <ToleranceBar

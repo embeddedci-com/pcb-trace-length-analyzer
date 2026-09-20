@@ -519,3 +519,44 @@ func TestRGMIIKeepsTwoBusesApart(t *testing.T) {
 		}
 	}
 }
+
+// A signal split by a filter is one signal, not two.
+//
+// Where the schematic names both sides -- "CSI.D0_P" into the filter and
+// "CSI.D0con_P" out of it -- both names are real nets, both are detected, and
+// both now measure the whole signal. Listing both would show every lane twice
+// and count each one twice against the tolerance.
+func TestASignalSplitByAPartIsListedOnce(t *testing.T) {
+	b := demo(t)
+	e := netlen.New(b)
+	var mipi *Interface
+	for _, i := range Detect(b) {
+		if i.Kind == MIPI {
+			mipi = i
+		}
+	}
+	if mipi == nil {
+		t.Fatal("no MIPI interface on the demo board")
+	}
+	a := mipi.Assess(e)
+	for _, g := range a.Groups {
+		for _, m := range g.Members {
+			if strings.Contains(m.Net, "con_") {
+				t.Errorf("group %q lists %s, the filter's far side, as well as the controller's",
+					g.Name, m.Net)
+			}
+		}
+		// The lanes, once each: D0 and D1 against the clock.
+		if got, want := len(g.Members), 2; got != want {
+			t.Errorf("group %q has %d members, want %d (one per lane)", g.Name, got, want)
+		}
+	}
+	for _, p := range a.Pairs {
+		if strings.Contains(p.P, "con_") {
+			t.Errorf("pair %s is the filter's far side, already counted as %s", p.Base, p.P)
+		}
+	}
+	if got, want := len(a.Pairs), 3; got != want {
+		t.Errorf("%d pairs, want %d (clock and two data lanes)", got, want)
+	}
+}

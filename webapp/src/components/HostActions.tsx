@@ -9,10 +9,25 @@ import { useState, type ReactNode } from 'react'
 import { Alert, Anchor, Button, Group, Text, Tooltip } from '@mantine/core'
 import { useHost, type HostApplyResult } from '../lib/host'
 
-/** A net's name that selects it on the open board when clicked. */
-export function NetName({ net, children }: { net: string; children: ReactNode }) {
+/**
+ * A net's name that selects it on the open board when clicked.
+ *
+ * `segments` is the whole signal where a filter or a series resistor splits it
+ * across more than one net: selecting the half this row is named after would
+ * highlight half the copper the length beside it was measured over.
+ */
+export function NetName({
+  net,
+  segments,
+  children,
+}: {
+  net: string
+  segments?: string[]
+  children: ReactNode
+}) {
   const host = useHost()
   if (!host) return <>{children}</>
+  const nets = segments?.length ? segments : [net]
   return (
     <Tooltip label={`Select ${net} in ${host.name}`} openDelay={400}>
       <Anchor
@@ -20,7 +35,7 @@ export function NetName({ net, children }: { net: string; children: ReactNode })
         type="button"
         c="inherit"
         underline="hover"
-        onClick={() => void host.selectNets([net])}
+        onClick={() => void host.selectNets(nets)}
       >
         {children}
       </Anchor>

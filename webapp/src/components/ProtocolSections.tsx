@@ -183,25 +183,35 @@ export function ProtocolNav({
  * "28.739 mm, DDR_CLK, tolerance ±0.635 mm". Every row is read against it.
  */
 function MatchTarget({ group }: { group: GroupSkewInfo }) {
+  // What the rows are measured against. Where the reference is a differential
+  // pair, that is the mean of its two halves, not either half: showing one
+  // half's length above deviations taken from the mean made every row look
+  // wrong by the difference between them.
+  const target = group.target_mm && group.target_mm > 0 ? group.target_mm : group.reference_mm
+  const pair = (group.reference ?? '').includes(' / ')
   return (
-    <Group gap="lg" align="flex-end" wrap="wrap">
-      <div>
-        <Text size="xs" c="dimmed" tt="uppercase">
-          Match to
-        </Text>
+    <div>
+      <Text size="xs" c="dimmed" tt="uppercase">
+        Match to
+      </Text>
+      {/* The figure and the net it belongs to sit on one baseline. Aligning
+          the boxes instead, which is what a row of different text sizes does
+          by default, left the name floating below the number. */}
+      <Group gap="xs" align="baseline" wrap="wrap">
         <Text size="lg" fw={700} ff="monospace" style={NOWRAP}>
-          {group.reference_mm > 0 ? mm(group.reference_mm) : 'not routed'}
+          {target > 0 ? mm(target) : 'not routed'}
         </Text>
-      </div>
-      <Text size="sm" style={{ flex: 1, minWidth: 180 }}>
-        <Text span fw={700}>
+        <Text size="sm" fw={700} style={NOWRAP}>
           {group.reference || 'the longest net'}
         </Text>
-        <Text span c="dimmed">
-          {group.limit_mm > 0 ? `, tolerance ±${mm(group.limit_mm)}` : ', no tolerance set'}
+        <Text size="sm" c="dimmed" style={NOWRAP}>
+          {pair ? '(the mean of the pair)' : ''}
         </Text>
-      </Text>
-    </Group>
+        <Text size="sm" c="dimmed" style={NOWRAP}>
+          {group.limit_mm > 0 ? `tolerance ±${mm(group.limit_mm)}` : 'no tolerance set'}
+        </Text>
+      </Group>
+    </div>
   )
 }
 
@@ -239,7 +249,9 @@ function GroupCard({ group }: { group: GroupSkewInfo }) {
           </div>
           <Group gap="xs" wrap="nowrap">
             {out.length > 0 && (
-              <SelectNetsButton nets={out.map((m) => m.net)}>Select the ones out</SelectNetsButton>
+              <SelectNetsButton nets={out.flatMap((m) => m.segments ?? [m.net])}>
+                Select the ones out
+              </SelectNetsButton>
             )}
             <Badge
               variant="light"
@@ -276,7 +288,9 @@ function GroupCard({ group }: { group: GroupSkewInfo }) {
                       <Table.Td>
                         <Group gap={6} wrap="nowrap">
                           <Text size="sm" c={bad ? 'orange' : undefined} fw={ref ? 700 : undefined}>
-                            <NetName net={m.net}>{m.label}</NetName>
+                            <NetName net={m.net} segments={m.segments}>
+                              {m.label}
+                            </NetName>
                           </Text>
                           {m.role === 'reference' && (
                             <Badge size="xs" variant="light">

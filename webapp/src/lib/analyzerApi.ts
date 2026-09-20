@@ -423,6 +423,8 @@ export interface LengthParts {
 }
 
 export interface MemberInfo {
+  /** Every net the signal runs on, set only when a part splits it. Selecting it means selecting all of them. */
+  segments?: string[]
   net: string
   label: string
   role: string

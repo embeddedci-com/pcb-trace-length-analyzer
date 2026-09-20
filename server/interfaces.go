@@ -379,8 +379,12 @@ func detectInterfaces(b *board.Board, e *netlen.Engine, overrides []InterfaceOve
 				if other == "" {
 					continue
 				}
-				if m := e.Measure(other); m != nil && m.Longest.Found && g.ReferenceMM > 0 {
-					gi.TargetMM = (g.ReferenceMM + m.Longest.Length) / 2
+				// Both halves measured the same way. The reference's length is
+				// the whole signal, across any part that splits it, so taking
+				// the other half's near side alone made a target that was
+				// neither half and shorter than both.
+				if j := e.Joined(other); j.Found && g.ReferenceMM > 0 {
+					gi.TargetMM = (g.ReferenceMM + j.LengthMM) / 2
 					gi.Reference = label(g.Reference) + " / " + label(other)
 					refNets[other] = true
 				}
@@ -402,6 +406,7 @@ func detectInterfaces(b *board.Board, e *netlen.Engine, overrides []InterfaceOve
 					DeviationMM: dev,
 					InTolerance: !m.Routed || g.LimitMM <= 0 || math.Abs(dev) <= g.LimitMM,
 					Through:     m.Through,
+					Segments:    splitSegments(e, m.Net),
 				}
 				if refNets[m.Net] {
 					row.Role = "reference"
@@ -525,11 +530,12 @@ func detectInterfaces(b *board.Board, e *netlen.Engine, overrides []InterfaceOve
 					{
 						Net: short, Label: label(short), Routed: true, LengthMM: length,
 						Parts: joinedParts(e, short), DeviationMM: -need, NeedMM: need,
-						NeedsReroute: reroute, Through: e.Joined(short).Through,
+						NeedsReroute: reroute, Through: e.Joined(short).Through, Segments: splitSegments(e, short),
 					},
 					{
 						Net: long, Label: label(long), Role: "reference", Routed: true, LengthMM: length + need,
 						Parts: joinedParts(e, long), InTolerance: true, Through: e.Joined(long).Through,
+						Segments: splitSegments(e, long),
 					},
 				},
 			})
@@ -576,6 +582,16 @@ func detectInterfaces(b *board.Board, e *netlen.Engine, overrides []InterfaceOve
 		out = append(out, d)
 	}
 	return out
+}
+
+// splitSegments is every net a signal runs on, empty where it runs on one.
+// Selecting it in the editor has to reach all of them.
+func splitSegments(e *netlen.Engine, net string) []string {
+	j := e.Joined(net)
+	if !j.Split() {
+		return nil
+	}
+	return j.Segments
 }
 
 func countRouted(b *board.Board, nets []string) int {

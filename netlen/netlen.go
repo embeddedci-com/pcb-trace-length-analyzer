@@ -20,6 +20,7 @@ import (
 
 	"github.com/embeddedci-com/pcb-autorouter/board"
 	"github.com/embeddedci-com/pcb-autorouter/geom"
+	"sync"
 )
 
 // tol is the distance below which two copper features are treated as the same
@@ -156,6 +157,15 @@ func pairKey(a, b string) string {
 // Engine measures nets on a board.
 type Engine struct {
 	b *board.Board
+
+	// The series parts on the board, indexed by the nets they join, built on
+	// first use, and every signal already measured across them. The board does
+	// not change under an engine, so both are worth keeping: an analysis asks
+	// for the same signal several times over.
+	linksOnce sync.Once
+	links     map[string][]SeriesLink
+	joinedMu  sync.Mutex
+	joined    map[string]*Joined
 
 	// CountViaLength mirrors the board setting of the same name: when false,
 	// via barrels are treated as zero-length, as KiCad does with

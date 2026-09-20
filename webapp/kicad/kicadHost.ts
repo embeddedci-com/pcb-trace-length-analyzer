@@ -32,9 +32,17 @@ async function call<T>(path: string, body: unknown): Promise<T> {
   return data as T
 }
 
-/** The URL that shows a session. */
+/**
+ * The URL that shows a session.
+ *
+ * The plugin's version rides on the query string, so it has to be carried
+ * across: a rescan from inside the page reloads it, and without this the
+ * footer then reads "Version unknown" for the rest of the session.
+ */
 export function sessionURL(id: string): string {
-  return `/index.html?session=${encodeURIComponent(id)}`
+  const version = new URLSearchParams(window.location.search).get('v')
+  const v = version ? `&v=${encodeURIComponent(version)}` : ''
+  return `/index.html?session=${encodeURIComponent(id)}${v}`
 }
 
 export const kicadHost: BoardHost = {

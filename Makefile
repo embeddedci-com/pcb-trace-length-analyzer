@@ -166,7 +166,12 @@ serve-api: build
 # linked into KiCad and used in place while it is being worked on.
 
 PLUGIN      := kicad-plugin
-VERSION     ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+GITVER      := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+# A dirty build is whatever happened to be on disk when it was made, so two of
+# them from the same commit are different programs with the same name. The
+# build time tells them apart, which is the question anybody reading the
+# footer of a development build is actually asking.
+VERSION     ?= $(if $(findstring -dirty,$(GITVER)),$(GITVER).$(shell date +%H%M),$(GITVER))
 PLUGIN_PY   ?= python3
 HOST_TAG    := $(shell go env GOOS)-$(shell go env GOARCH)
 RELEASE_TAGS := darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64

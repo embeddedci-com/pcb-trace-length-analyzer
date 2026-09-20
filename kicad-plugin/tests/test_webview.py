@@ -76,7 +76,12 @@ def fetch_js(page, path, method="GET", body=None):
           .catch(e => {{ window.__r = JSON.stringify({{error: String(e)}}) }});
         true""",
     )
-    assert wait(lambda: run_js(page, "window.__r") is not None)
+    # An unfinished fetch reads back as null, and PySide hands that over as an
+    # empty string rather than None, so waiting for "not None" returned before
+    # the answer had arrived. Anything slower than the first poll -- a request
+    # that analyses the board, say -- then failed here rather than being
+    # waited for.
+    assert wait(lambda: run_js(page, "window.__r")), "the fetch never finished"
     return json.loads(run_js(page, "window.__r"))
 
 

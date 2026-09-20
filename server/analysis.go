@@ -473,6 +473,11 @@ type MemberInfo struct {
 	// LengthMM above is the sum of the segments.
 	Through []string `json:"through,omitempty"`
 
+	// Segments is every net the signal runs on, set only where there is more
+	// than one. Selecting the signal in the editor means selecting all of
+	// them: half of a signal highlighted is half a signal to look at.
+	Segments []string `json:"segments,omitempty"`
+
 	// HeadroomMM is the most length the space beside this route could hold.
 	// Zero when it was not measured.
 	//

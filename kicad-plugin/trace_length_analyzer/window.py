@@ -234,14 +234,14 @@ class AnalyzerWindow(QMainWindow):
     def _rescanned(self, sid: Any, err: Optional[BaseException]) -> None:
         if self.view is None:
             return
+        from . import __version__
+
         if err:
             self.statusBar().showMessage("Could not read the board")
             QMessageBox.warning(self, "Could not read the board", str(err))
-            self.view.setUrl(QUrl(f"{ORIGIN}/index.html"))
+            self.view.setUrl(QUrl(f"{ORIGIN}/index.html?v={__version__}"))
             return
         self.statusBar().showMessage(f"Read {self.ctl.filename} from {self.ctl.source}", 8000)
-        from . import __version__
-
         self.view.setUrl(QUrl(f"{ORIGIN}/index.html?session={sid}&v={__version__}"))
         self._last_selection = []
 
