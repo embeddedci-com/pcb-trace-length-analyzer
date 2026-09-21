@@ -256,3 +256,44 @@ func TestACompleteChainIsReportedAsComplete(t *testing.T) {
 		t.Errorf("%d hops, want controller->near, near->far, far->termination", n)
 	}
 }
+
+// The clock pair ends at one differential terminator, so two of the chain's
+// nets finish at the same part.
+//
+// The hop used to count the parts reached rather than the nets reaching them,
+// so a fully routed board with a 100 ohm resistor across the clock reported
+// "routed on 25 of 26 nets" and called the chain incomplete, with no net to
+// name and nothing to route.
+func TestAClockPairSharingOneTerminatorIsFullyRouted(t *testing.T) {
+	s := twoDeviceBoard(t, "U9", "U10", 30, 70)
+	// One resistor across the clock pair, the way a board terminates a
+	// differential clock, instead of one per half.
+	var clock []string
+	for _, net := range flyByNets {
+		if strings.HasPrefix(net, "/d/DDR_CLK") {
+			clock = append(clock, net)
+		}
+	}
+	s.part("R99", geom.Pt{X: 95, Y: 60}, clock)
+	for i, net := range flyByNets {
+		s.hop(net, "U1", "U9")
+		s.hop(net, "U9", "U10")
+		if strings.HasPrefix(net, "/d/DDR_CLK") {
+			s.hop(net, "U10", "R99")
+			continue
+		}
+		s.hop(net, "U10", fmt.Sprintf("R%d", i+1))
+	}
+	_, plan := classifyChain(t, s)
+	last := plan.Chain.Hops[len(plan.Chain.Hops)-1]
+	if last.To != "termination" {
+		t.Fatalf("last hop is %s->%s, want the termination", last.From, last.To)
+	}
+	if last.Nets != last.Of || !last.Routed() {
+		t.Errorf("termination hop reports %d of %d nets; every net reaches a terminator",
+			last.Nets, last.Of)
+	}
+	if gap := plan.Chain.FirstGap(); gap != nil {
+		t.Errorf("reported %s->%s as missing on a fully routed chain", gap.From, gap.To)
+	}
+}

@@ -433,8 +433,14 @@ func (l leg) String() string { return l.from + "->" + l.to }
 func chainOf(iface *Interface, m Measurer, nets []string) *Chain {
 	c := &Chain{Order: append([]string{iface.Controller}, iface.Devices...), OrderFrom: iface.ChainOrder}
 
-	// Who reaches whom, over how many of the chain's nets.
-	joined := map[[2]string]int{}
+	// Who reaches whom, and which of the chain's nets make each hop.
+	//
+	// Nets, not paths: a net can reach the same part by more than one route,
+	// and two nets can end at the same part -- a clock pair across one
+	// differential terminator does exactly that -- so counting anything else
+	// answers a different question than "how many of these nets make this
+	// hop".
+	joined := map[[2]string]map[string]bool{}
 	considered := 0
 	for _, net := range nets {
 		mm := m.Measure(net)
@@ -450,14 +456,18 @@ func chainOf(iface *Interface, m Measurer, nets []string) *Chain {
 			if a > b {
 				a, b = b, a
 			}
-			joined[[2]string{a, b}]++
+			key := [2]string{a, b}
+			if joined[key] == nil {
+				joined[key] = map[string]bool{}
+			}
+			joined[key][net] = true
 		}
 	}
 	reaches := func(a, b string) int {
 		if a > b {
 			a, b = b, a
 		}
-		return joined[[2]string{a, b}]
+		return len(joined[[2]string{a, b}])
 	}
 
 	// Re-order from the copper, by how far along it each device sits.
@@ -527,19 +537,15 @@ func chainOf(iface *Interface, m Measurer, nets []string) *Chain {
 		for _, r := range c.Order {
 			known[r] = true
 		}
-		term := 0
-		for pair, n := range joined {
-			if n == 0 {
-				continue
-			}
-			if pair[0] == last && !known[pair[1]] {
-				term++
-			}
-			if pair[1] == last && !known[pair[0]] {
-				term++
+		term := map[string]bool{}
+		for pair, nets := range joined {
+			if (pair[0] == last && !known[pair[1]]) || (pair[1] == last && !known[pair[0]]) {
+				for net := range nets {
+					term[net] = true
+				}
 			}
 		}
-		c.Hops = append(c.Hops, Hop{From: last, To: "termination", Nets: term, Of: considered})
+		c.Hops = append(c.Hops, Hop{From: last, To: "termination", Nets: len(term), Of: considered})
 	}
 
 	// A hop with copper beyond one with none is worth pointing out. It is what
