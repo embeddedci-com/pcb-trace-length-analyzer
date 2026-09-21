@@ -362,32 +362,16 @@ func detectInterfaces(b *board.Board, e *netlen.Engine, overrides []InterfaceOve
 				SpreadMM: g.SpreadMM, LimitMM: g.LimitMM, Members: len(g.Members),
 				OutOfTol: g.OutOfTol, Unroutable: g.Unroutable, Why: why,
 			}
-			// The target is the reference: the clock, or the mean of the
-			// clock pair when the reference is half of one -- the same rule the
-			// DDR planner uses. It is not raised to a member that is longer;
-			// that member is too long, and says so.
-			gi.TargetMM = g.ReferenceMM
+			// The target is what the measuring judged the members against: the
+			// reference, or the mean of the clock pair where the reference is
+			// half of one, which is the same rule the DDR planner uses. It is
+			// not raised to a member that is longer; that member is too long,
+			// and says so.
+			gi.TargetMM = g.TargetMM
 			refNets := map[string]bool{g.Reference: true}
-			for _, pr := range i.Pairs {
-				var other string
-				switch g.Reference {
-				case pr.P:
-					other = pr.N
-				case pr.N:
-					other = pr.P
-				}
-				if other == "" {
-					continue
-				}
-				// Both halves measured the same way. The reference's length is
-				// the whole signal, across any part that splits it, so taking
-				// the other half's near side alone made a target that was
-				// neither half and shorter than both.
-				if j := e.Joined(other); j.Found && g.ReferenceMM > 0 {
-					gi.TargetMM = (g.ReferenceMM + j.LengthMM) / 2
-					gi.Reference = label(g.Reference) + " / " + label(other)
-					refNets[other] = true
-				}
+			if other := pairHalfOf(i.Pairs, g.Reference); other != "" && g.TargetMM != g.ReferenceMM {
+				gi.Reference = label(g.Reference) + " / " + label(other)
+				refNets[other] = true
 			}
 			for _, m := range g.Members {
 				grouped[m.Net] = true
@@ -582,6 +566,20 @@ func detectInterfaces(b *board.Board, e *netlen.Engine, overrides []InterfaceOve
 		out = append(out, d)
 	}
 	return out
+}
+
+// pairHalfOf returns the other half of the pair a net belongs to, empty when
+// it is not half of one.
+func pairHalfOf(pairs []proto.Pair, net string) string {
+	for _, p := range pairs {
+		switch net {
+		case p.P:
+			return p.N
+		case p.N:
+			return p.P
+		}
+	}
+	return ""
 }
 
 // splitSegments is every net a signal runs on, empty where it runs on one.

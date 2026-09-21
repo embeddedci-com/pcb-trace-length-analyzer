@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"fmt"
 	"math"
 	"mime/multipart"
 	"net/http"
@@ -507,8 +508,10 @@ func TestASplitSignalCarriesItsSegments(t *testing.T) {
 // It used to take the reference's whole length and the other half's near side
 // only: 32 mm and 11.25 mm, a target of 21.625 mm that is neither half and
 // shorter than both, so a lane needing 2 mm added was told to shorten by 8.875.
-func mipiThroughFilter() []byte {
-	return []byte(`(kicad_pcb
+// The data lane comes to 2*laneY mm across the filter, so a test can place it
+// anywhere against the clock.
+func mipiThroughFilter(laneY float64) []byte {
+	return []byte(fmt.Sprintf(`(kicad_pcb
 	(version 20260206)
 	(generator "pcb-trace-length-analyzer-test")
 	(paper "A4")
@@ -566,21 +569,21 @@ func mipiThroughFilter() []byte {
 	(segment (start 30 17) (end 30 11) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.CKcon_N") (uuid "dddddddd-4444-4000-8000-000000000036"))
 	(segment (start 10 12) (end 20.25 12) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.D0_P") (uuid "dddddddd-4444-4000-8000-000000000037"))
 	(segment (start 20.25 12) (end 20.25 9.5) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.D0_P") (uuid "dddddddd-4444-4000-8000-000000000038"))
-	(segment (start 20.25 10.5) (end 20.25 15.5) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.D0con_P") (uuid "dddddddd-4444-4000-8000-000000000039"))
-	(segment (start 20.25 15.5) (end 30 15.5) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.D0con_P") (uuid "dddddddd-4444-4000-8000-000000000040"))
-	(segment (start 30 15.5) (end 30 12) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.D0con_P") (uuid "dddddddd-4444-4000-8000-000000000041"))
+	(segment (start 20.25 10.5) (end 20.25 %[1]g) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.D0con_P") (uuid "dddddddd-4444-4000-8000-000000000039"))
+	(segment (start 20.25 %[1]g) (end 30 %[1]g) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.D0con_P") (uuid "dddddddd-4444-4000-8000-000000000040"))
+	(segment (start 30 %[1]g) (end 30 12) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.D0con_P") (uuid "dddddddd-4444-4000-8000-000000000041"))
 	(segment (start 10 13) (end 20.75 13) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.D0_N") (uuid "dddddddd-4444-4000-8000-000000000042"))
 	(segment (start 20.75 13) (end 20.75 9.5) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.D0_N") (uuid "dddddddd-4444-4000-8000-000000000043"))
 	(segment (start 20.75 10.5) (end 20.75 19) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.D0con_N") (uuid "dddddddd-4444-4000-8000-000000000044"))
 	(segment (start 20.75 19) (end 30 19) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.D0con_N") (uuid "dddddddd-4444-4000-8000-000000000045"))
 	(segment (start 30 19) (end 30 13) (width 0.2) (layer "F.Cu") (net "/MIPI/CSI.D0con_N") (uuid "dddddddd-4444-4000-8000-000000000046"))
 )
-`)
+`, laneY))
 }
 
 func TestALaneShorterThanItsClockIsToldToAddLength(t *testing.T) {
 	h := newHarness(t)
-	up := decode[SessionResponse](t, h.uploadBytes("camera.kicad_pcb", mipiThroughFilter()))
+	up := decode[SessionResponse](t, h.uploadBytes("camera.kicad_pcb", mipiThroughFilter(15.5)))
 
 	var mipi *DetectedInterface
 	for i := range up.Analysis.Interfaces {
@@ -621,4 +624,36 @@ func TestALaneShorterThanItsClockIsToldToAddLength(t *testing.T) {
 		return
 	}
 	t.Errorf("the data lane is not in the group: %+v", lanes.Rows)
+}
+
+// The count on a group and the rows under it have to be the same reading.
+//
+// The lane here is 32.6 mm against a target of 33 mm, inside the group's
+// ±0.5 mm. Counting it against the clock's P half alone, 32 mm, made it 0.6 mm
+// out: the card said "1 out" over two rows that were both within tolerance.
+func TestAGroupsCountAgreesWithItsRows(t *testing.T) {
+	h := newHarness(t)
+	up := decode[SessionResponse](t, h.uploadBytes("camera.kicad_pcb", mipiThroughFilter(16.3)))
+
+	for _, d := range up.Analysis.Interfaces {
+		if d.Kind != "mipi" {
+			continue
+		}
+		for _, g := range d.Groups {
+			out := 0
+			for _, m := range g.Rows {
+				if m.Routed && !m.InTolerance && m.Role != "reference" {
+					out++
+				}
+			}
+			if g.OutOfTol != out {
+				t.Errorf("group %q says %d out, but %d of its rows are: %+v", g.Name, g.OutOfTol, out, g.Rows)
+			}
+			if g.Reference == "CSI.CK_P / CSI.CK_N" && g.OutOfTol != 0 {
+				t.Errorf("the lane is 0.4 mm from the target with 0.5 mm allowed, but %d is counted out", g.OutOfTol)
+			}
+		}
+		return
+	}
+	t.Fatal("no camera interface found")
 }

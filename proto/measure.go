@@ -61,6 +61,12 @@ type GroupSkew struct {
 	// routed.
 	ReferenceMM float64
 
+	// TargetMM is what the members are actually judged against. It is the
+	// reference's length, except where the reference is half of a
+	// differential pair -- a camera clock lane, a DDR strobe -- and the group
+	// is matched to the pair, where it is the mean of the two halves.
+	TargetMM float64
+
 	Members []MemberSkew
 
 	// SpreadMM is the longest member minus the shortest, over the routed ones.
@@ -224,12 +230,24 @@ func (i *Interface) Assess(m Measurer) *Assessment {
 			ref = hi
 		}
 		gs.ReferenceMM = ref
+		// A clock lane is a differential pair, and what the data is sampled
+		// against is the pair, so the target is the mean of its halves.
+		// Judging against one half alone charges every member with the pair's
+		// own skew, which is a separate check with a tighter limit.
+		gs.TargetMM = ref
+		if refOK {
+			if other := otherHalf(i.Pairs, g.Reference); other != "" {
+				if l, ok := length(other); ok {
+					gs.TargetMM = (ref + l) / 2
+				}
+			}
+		}
 		for k := range gs.Members {
 			ms := &gs.Members[k]
 			if !ms.Routed {
 				continue
 			}
-			ms.DeviationMM = ms.LengthMM - ref
+			ms.DeviationMM = ms.LengthMM - gs.TargetMM
 			ms.InTolerance = gs.LimitMM <= 0 || math.Abs(ms.DeviationMM) <= gs.LimitMM
 			if !ms.InTolerance {
 				gs.OutOfTol++
@@ -247,6 +265,20 @@ func (i *Interface) Assess(m Measurer) *Assessment {
 
 	a.Summary = a.summarise(i)
 	return a
+}
+
+// otherHalf returns the other half of the pair a net belongs to, empty when it
+// is not half of one.
+func otherHalf(pairs []Pair, net string) string {
+	for _, p := range pairs {
+		switch net {
+		case p.P:
+			return p.N
+		case p.N:
+			return p.P
+		}
+	}
+	return ""
 }
 
 // pairNets is every net of a list of pairs, P before N.
