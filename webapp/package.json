@@ -12,8 +12,8 @@
     "build:kicad": "tsc --noEmit -p tsconfig.build.json && vite build --config vite.kicad.config.ts"
   },
   "devDependencies": {
-    "@mantine/core": "^8.3.18",
-    "@mantine/hooks": "^8.3.18",
+    "@mantine/core": "^9.6.2",
+    "@mantine/hooks": "^9.6.2",
     "@tanstack/react-query": "^5.102.8",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
@@ -30,8 +30,8 @@
     "vitest": "^5.0.0"
   },
   "peerDependencies": {
-    "@mantine/core": "^8.3.18",
-    "@mantine/hooks": "^8.3.18",
+    "@mantine/core": "^9.6.2",
+    "@mantine/hooks": "^9.6.2",
     "@tanstack/react-query": "^5.91.3",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

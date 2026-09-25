@@ -138,7 +138,7 @@ export function UploadForm({ maxUploadBytes, busy, error, onSubmit }: UploadForm
       <Button variant="subtle" size="compact-sm" onClick={() => setShowAdvanced((v) => !v)}>
         {showAdvanced ? 'Fewer options' : 'More options'}
       </Button>
-      <Collapse in={showAdvanced}>
+      <Collapse expanded={showAdvanced}>
         <Stack gap="sm">
           <FileInput
             label="Custom design rules"

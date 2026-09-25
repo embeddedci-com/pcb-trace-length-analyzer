@@ -134,7 +134,7 @@ describe('the preset dropdown', () => {
   it('applies the chosen vendor rules to the form', async () => {
     const onApply = vi.fn()
     renderUI(<ParameterForm value={params()} presets={[st, rk]} onApply={onApply} />)
-    await userEvent.click(screen.getByRole('textbox', { name: 'Preset' }))
+    await userEvent.click(screen.getByRole('combobox', { name: 'Preset' }))
     await userEvent.click(await screen.findByText(/RK3588, LPDDR4\/LPDDR4X \(10-layer HDI\)/))
     await userEvent.click(screen.getByRole('button', { name: /apply/i }))
     expect(onApply).toHaveBeenCalledTimes(1)
@@ -166,7 +166,7 @@ describe('the preset dropdown', () => {
 
   it('is left out where there are no presets to offer', () => {
     renderUI(<ParameterForm value={params()} onApply={vi.fn()} />)
-    expect(screen.queryByRole('textbox', { name: 'Preset' })).toBeNull()
+    expect(screen.queryByRole('combobox', { name: 'Preset' })).toBeNull()
   })
 })
 
@@ -177,7 +177,7 @@ describe('finding a preset by part number', () => {
 
   it('matches a part the label does not name', async () => {
     renderUI(<ParameterForm value={params()} presets={[st, withParts]} onApply={vi.fn()} />)
-    const box = screen.getByRole('textbox', { name: 'Preset' })
+    const box = screen.getByRole('combobox', { name: 'Preset' })
     await userEvent.click(box)
     // The box shows the preset already in force, so a search replaces it.
     await userEvent.clear(box)
@@ -188,7 +188,7 @@ describe('finding a preset by part number', () => {
 
   it('still matches the label, and says so when nothing matches', async () => {
     renderUI(<ParameterForm value={params()} presets={[st, withParts]} onApply={vi.fn()} />)
-    const box = screen.getByRole('textbox', { name: 'Preset' })
+    const box = screen.getByRole('combobox', { name: 'Preset' })
     await userEvent.click(box)
     await userEvent.clear(box)
     await userEvent.type(box, '10-layer')
