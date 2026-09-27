@@ -271,7 +271,11 @@ func Topology(w io.Writer, chain *ddr.Chain) {
 // Recognition is by net name, so every line says what it matched on. Nothing in
 // the geometry says a pair is PCIe rather than SATA, and a tool that hid that
 // would be claiming more than it knows.
-func Interfaces(w io.Writer, found []*proto.Interface, m proto.Measurer) {
+//
+// verdictFor gives the planner's verdict for an interface it planned (the DDR
+// plan's Summary for the DDR bus it covers), or false. Nil when there is no
+// plan, in which case such lines speak for their pairs only.
+func Interfaces(w io.Writer, found []*proto.Interface, m proto.Measurer, verdictFor func(*proto.Interface) (string, bool)) {
 	if len(found) == 0 {
 		return
 	}
@@ -279,6 +283,11 @@ func Interfaces(w io.Writer, found []*proto.Interface, m proto.Measurer) {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	for _, i := range found {
 		a := i.Assess(m)
+		if verdictFor != nil {
+			if v, ok := verdictFor(i); ok {
+				a.WithPlannerVerdict(i, v)
+			}
+		}
 		mark := " "
 		if a.Actionable() {
 			mark = "*"
@@ -431,11 +440,14 @@ func Plan(w io.Writer, p *ddr.Plan) {
 		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 		fmt.Fprintln(tw, "  net\tlength mm\tdelay ps\tvs target\tadd mm\troom mm\t")
 		ms := append([]ddr.Member{}, g.Members...)
-		sort.Slice(ms, func(i, j int) bool {
+		// Shortest first. Lengths that print the same are equal here, and keep
+		// the group's own order (by role, then bit): comparing them exactly
+		// sorted on floating-point noise and scattered DQ3 among the strobes.
+		sort.SliceStable(ms, func(i, j int) bool {
 			if ms[i].Routed != ms[j].Routed {
 				return ms[j].Routed
 			}
-			return ms[i].Length < ms[j].Length
+			return ms[i].Length < ms[j].Length-sameLengthMM
 		})
 		reroute, long := 0, 0
 		toAdd := 0.0
@@ -741,6 +753,10 @@ func Checks(w io.Writer, p *ddr.Plan) {
 		fmt.Fprintf(w, "  %s: %s\n", c.Name, c.Detail)
 	}
 }
+
+// sameLengthMM is below the report's 0.001 mm resolution: two lengths closer
+// than this print the same and sort as equal.
+const sameLengthMM = 1e-6
 
 // Layers prints where the routes use other layers than the guide expects.
 // Observations, not failures: a board may be built this way on purpose.

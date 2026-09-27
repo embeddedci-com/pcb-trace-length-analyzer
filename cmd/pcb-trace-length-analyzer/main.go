@@ -345,7 +345,7 @@ func analyse(path string, o options, w *os.File, in *os.File) error {
 	if prefix == "" && scoped == nil {
 		report.Board(w, b, proj)
 		report.CustomRules(w, dru)
-		report.Interfaces(w, found, engine)
+		report.Interfaces(w, found, engine, nil)
 		reportInterfaceDetail(w, found, engine, o.onlyIface)
 		fmt.Fprintln(w, "\nNo DDR on this board, so there is no length matching to do yet: the")
 		fmt.Fprintln(w, "interfaces above are measured but only DDR is planned and tuned so far.")
@@ -367,11 +367,6 @@ func analyse(path string, o options, w *os.File, in *os.File) error {
 	report.CustomRules(w, dru)
 	report.Routing(w, engine, iface)
 
-	// Everything else the board carries. DDR is the rest of this report; these
-	// are the buses that want the same treatment and have not had it yet.
-	report.Interfaces(w, found, engine)
-	reportInterfaceDetail(w, found, engine, o.onlyIface)
-
 	rules := ddr.Rules{
 		DataToStrobe:       ddr.Tolerance{MM: o.dataTolMM, PS: o.dataTolPS},
 		IntraPair:          ddr.Tolerance{MM: o.pairTolMM, PS: o.pairTolPS},
@@ -387,6 +382,14 @@ func analyse(path string, o options, w *os.File, in *os.File) error {
 	if err != nil {
 		return err
 	}
+
+	// Everything else the board carries. DDR is the rest of this report; these
+	// are the buses that want the same treatment and have not had it yet. The
+	// DDR line takes the plan's verdict: on its own it sees only the pairs.
+	report.Interfaces(w, found, engine, func(i *proto.Interface) (string, bool) {
+		return plan.Summary(), plan.Covers(i)
+	})
+	reportInterfaceDetail(w, found, engine, o.onlyIface)
 
 	style := tune.Style{
 		MaxAmplitude:    o.maxAmp,

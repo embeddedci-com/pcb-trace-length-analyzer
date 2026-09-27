@@ -106,6 +106,10 @@ type Assessment struct {
 
 	// Summary is a sentence for the list.
 	Summary string
+
+	// plannerOut is set by WithPlannerVerdict when the interface's own
+	// analyser found something out of tolerance.
+	plannerOut bool
 }
 
 // Assess measures an interface.
@@ -296,6 +300,9 @@ func (a *Assessment) summarise(i *Interface) string {
 		return "none of it is routed yet"
 	case a.Unroutable == i.Total:
 		return "it has copper, but no net on it is joined end to end yet"
+	case a.PairsOut == 0 && a.MembersOut == 0 && a.Unroutable == 0 && i.Planner != "" && len(i.Groups) == 0:
+		// Only the pairs were looked at here; the lengths are the planner's.
+		return "its pairs are within tolerance; lengths are checked in its own section"
 	case a.PairsOut == 0 && a.MembersOut == 0 && a.Unroutable == 0:
 		return "everything measurable is within tolerance"
 	}
@@ -322,4 +329,25 @@ func (a *Assessment) summarise(i *Interface) string {
 
 // Actionable reports whether there is anything here a length matcher could
 // improve.
-func (a *Assessment) Actionable() bool { return a.PairsOut > 0 || a.MembersOut > 0 }
+func (a *Assessment) Actionable() bool { return a.PairsOut > 0 || a.MembersOut > 0 || a.plannerOut }
+
+// WithPlannerVerdict folds in what the interface's own analyser found, for an
+// interface whose lengths are judged there and not here: DDR, whose line in
+// the list would otherwise see only its pairs and call the rest fine. An
+// empty verdict means the analyser found nothing wrong.
+func (a *Assessment) WithPlannerVerdict(i *Interface, verdict string) {
+	if i.Planner == "" {
+		return
+	}
+	switch {
+	case verdict != "":
+		a.plannerOut = true
+		if a.PairsOut == 0 && a.MembersOut == 0 && a.Unroutable == 0 {
+			a.Summary = verdict
+		} else {
+			a.Summary += "; " + verdict
+		}
+	case a.PairsOut == 0 && a.MembersOut == 0 && a.Unroutable == 0:
+		a.Summary = "everything measurable is within tolerance"
+	}
+}

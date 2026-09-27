@@ -44,8 +44,15 @@ const (
 
 // LayerFindings checks the layer rules on the measured routes. Only rules
 // some net does not follow are returned.
+//
+// The rules are AN5724's for a fly-by bus, where address and command run
+// along the bottom and drop to each memory. A point-to-point interface such
+// as LPDDR has no such bus, so it is not held to them.
 func (p *Plan) LayerFindings(b *board.Board) []LayerFinding {
 	if len(b.CopperLayers) < 2 {
+		return nil
+	}
+	if p.Chain != nil && len(p.Chain.Hops) == 0 {
 		return nil
 	}
 	top, bottom := b.CopperLayers[0], b.CopperLayers[len(b.CopperLayers)-1]

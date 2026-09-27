@@ -1082,7 +1082,7 @@ func analyse(b *board.Board, proj *board.Project, filename string, p Params, sv 
 			spacing: spacing, areas: areas}
 		a.PackageLengths = pkgs
 		a.Board = boardInfo(b, proj, filename)
-		a.Interfaces = detectInterfaces(b, engine, p.Interfaces, p.MaxIntraPairFixMM, p.GroupToleranceMM)
+		a.Interfaces = detectInterfaces(b, engine, p.Interfaces, p.MaxIntraPairFixMM, p.GroupToleranceMM, nil)
 		measureInterfaces(b, sv, a.Interfaces)
 		nets := interfaceNets(a.Interfaces)
 		if len(nets) == 0 {
@@ -1159,7 +1159,7 @@ func analyse(b *board.Board, proj *board.Project, filename string, p Params, sv 
 			Hop: hopOf(plan.Chain, q.From, q.To),
 		})
 	}
-	a.Interfaces = detectInterfaces(b, engine, p.Interfaces, p.MaxIntraPairFixMM, p.GroupToleranceMM)
+	a.Interfaces = detectInterfaces(b, engine, p.Interfaces, p.MaxIntraPairFixMM, p.GroupToleranceMM, plan)
 	measureInterfaces(b, sv, a.Interfaces)
 
 	totals := map[string]float64{}

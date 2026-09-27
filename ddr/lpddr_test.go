@@ -171,6 +171,17 @@ func TestLPDDR4ChannelsAreFoundAndKeptApart(t *testing.T) {
 	if len(checks) != 4 {
 		t.Fatalf("strobe-to-clock checks: %v", checks)
 	}
+	// The DDR line in the interface list takes this verdict; on its own it
+	// sees only the pairs, which are fine, and said everything was.
+	// (The default 12.07 mm strobe-to-clock band still takes channel B's
+	// -10 mm; the RK3588 preset's 6.35 mm would not.)
+	if got, want := p.Summary(), "8 net(s) out of tolerance in 1 group(s)"; got != want {
+		t.Errorf("summary = %q, want %q", got, want)
+	}
+	// AN5724's fly-by layer rules do not apply to a point-to-point bus.
+	if fs := p.LayerFindings(b); fs != nil {
+		t.Errorf("layer findings on a point-to-point bus: %+v", fs)
+	}
 	a0 := checks["channel A byte lane 0 strobe vs CLK at U2"]
 	b0 := checks["channel B byte lane 0 strobe vs CLK at U2"]
 	if math.Abs(a0.ValueMM) > 0.01 || math.Abs(b0.ValueMM+10) > 0.5 {

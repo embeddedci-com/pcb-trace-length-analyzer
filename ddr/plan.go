@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/embeddedci-com/pcb-autorouter/netlen"
+	"github.com/embeddedci-com/pcb-autorouter/proto"
 )
 
 // GroupKind is the sort of matching a group requires.
@@ -185,6 +186,47 @@ func (g *Group) TotalNeed() float64 {
 		t += m.Need
 	}
 	return t
+}
+
+// Summary says in a phrase what the plan finds wrong, or "" when every group
+// and every check is met. It is the DDR interface's line in the list of
+// interfaces, which otherwise sees only its pairs.
+func (p *Plan) Summary() string {
+	nets, groups := 0, 0
+	for _, g := range p.Groups {
+		if n := g.OutOfTolerance(); n > 0 {
+			nets += n
+			groups++
+		}
+	}
+	failed := 0
+	for _, c := range p.Checks() {
+		if !c.OK {
+			failed++
+		}
+	}
+	var parts []string
+	if nets > 0 {
+		parts = append(parts, fmt.Sprintf("%d net(s) out of tolerance in %d group(s)", nets, groups))
+	}
+	if failed > 0 {
+		parts = append(parts, fmt.Sprintf("%d check(s) across groups failed", failed))
+	}
+	return strings.Join(parts, "; ")
+}
+
+// Covers reports whether a detected DDR interface is the one this plan is
+// for: whether any of its nets was classified.
+func (p *Plan) Covers(i *proto.Interface) bool {
+	if i.Kind != proto.DDR || p.Interface == nil {
+		return false
+	}
+	for _, n := range i.Nets {
+		if p.Interface.Signals[n] != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // OutOfTolerance counts members that do not yet meet the group's tolerance.

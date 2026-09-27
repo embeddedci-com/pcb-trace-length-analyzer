@@ -560,3 +560,28 @@ func TestASignalSplitByAPartIsListedOnce(t *testing.T) {
 		t.Errorf("%d pairs, want %d (clock and two data lanes)", got, want)
 	}
 }
+
+// An interface whose lengths another analyser judges must not call itself
+// fine because its pairs are: the analyser's verdict decides the line.
+func TestPlannerVerdictDecidesTheLine(t *testing.T) {
+	i := &Interface{Kind: DDR, Planner: "the DDR analyser", Routed: 1, Total: 1}
+	a := &Assessment{}
+	a.Summary = a.summarise(i)
+	if strings.Contains(a.Summary, "everything") {
+		t.Errorf("before the verdict: %q", a.Summary)
+	}
+	a.WithPlannerVerdict(i, "8 net(s) out of tolerance in 1 group(s)")
+	if a.Summary != "8 net(s) out of tolerance in 1 group(s)" || !a.Actionable() {
+		t.Errorf("with a verdict: %q, actionable %v", a.Summary, a.Actionable())
+	}
+	b := &Assessment{PairsOut: 1, Summary: "1 pair(s) out of intra-pair tolerance"}
+	b.WithPlannerVerdict(i, "2 net(s) out of tolerance in 1 group(s)")
+	if b.Summary != "1 pair(s) out of intra-pair tolerance; 2 net(s) out of tolerance in 1 group(s)" {
+		t.Errorf("pairs and verdict: %q", b.Summary)
+	}
+	c := &Assessment{}
+	c.WithPlannerVerdict(i, "")
+	if c.Summary != "everything measurable is within tolerance" || c.Actionable() {
+		t.Errorf("clean verdict: %q, actionable %v", c.Summary, c.Actionable())
+	}
+}

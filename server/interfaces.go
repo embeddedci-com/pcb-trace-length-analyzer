@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"github.com/embeddedci-com/pcb-autorouter/board"
+	"github.com/embeddedci-com/pcb-autorouter/ddr"
 	"github.com/embeddedci-com/pcb-autorouter/netlen"
 	"github.com/embeddedci-com/pcb-autorouter/proto"
 )
@@ -280,7 +281,10 @@ type GroupSkewInfo struct {
 
 // detectInterfaces reads the board for everything it carries, applies whatever
 // the user has said about it, and measures each.
-func detectInterfaces(b *board.Board, e *netlen.Engine, overrides []InterfaceOverride, maxPairFix float64, groupTol map[string]float64) []DetectedInterface {
+//
+// plan, when there is one, gives the DDR interface it covers its verdict: on
+// its own that interface's line sees only its pairs.
+func detectInterfaces(b *board.Board, e *netlen.Engine, overrides []InterfaceOverride, maxPairFix float64, groupTol map[string]float64, plan *ddr.Plan) []DetectedInterface {
 	by := map[string]InterfaceOverride{}
 	for _, o := range overrides {
 		by[o.ID] = o
@@ -311,6 +315,9 @@ func detectInterfaces(b *board.Board, e *netlen.Engine, overrides []InterfaceOve
 			}
 		}
 		a := i.Assess(e)
+		if plan != nil && plan.Covers(i) {
+			a.WithPlannerVerdict(i, plan.Summary())
+		}
 		d := DetectedInterface{
 			ID: i.Name, Kind: string(i.Kind), Name: i.Name,
 			Nets: i.Total, Routed: i.Routed, Pairs: len(i.Pairs),
