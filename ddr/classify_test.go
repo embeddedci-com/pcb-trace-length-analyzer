@@ -235,6 +235,21 @@ func TestSignalNameParsing(t *testing.T) {
 		{"DDR_CASN", RoleCommand, -1, Single},
 		{"DDR_WEN", RoleCommand, -1, Single},
 		{"DDR_ACTN", RoleCommand, -1, Single},
+		// LPDDR4/5: JEDEC spellings with the channel after the pin, and the
+		// other places schematics put it.
+		{"DQ15_B", RoleData, 15, Single},
+		{"DQS1_c_A", RoleStrobe, 1, Negative},
+		{"CK_t_B", RoleClock, -1, Positive},
+		{"CA5_A", RoleCommand, 5, Single},
+		{"CS0_n", RoleCommand, 0, Single},
+		{"DMI0_B", RoleDataMask, 0, Single},
+		{"ODT_CA_A", RoleControl, -1, Single},
+		{"RESET_n", RoleControl, -1, Single},
+		{"LPDDR4_A_DQ3", RoleData, 3, Single},
+		{"DDR_CHB_DQS0_P", RoleStrobe, 0, Positive},
+		{"DDR_DQ7_CH1", RoleData, 7, Single},
+		{"WCK1_t_A", RoleStrobe, 1, Positive},
+		{"DDR0_CK0_n", RoleClock, 0, Negative},
 		// Not DDR at all.
 		{"/expansion/USB_DATA_P", RoleUnknown, -1, Single},
 		{"GND", RoleUnknown, -1, Single},

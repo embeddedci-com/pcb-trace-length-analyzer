@@ -95,8 +95,12 @@ func Interface(w io.Writer, b *board.Board, proj *board.Project, iface *ddr.Inte
 		len(b.CopperLayers), strings.Join(b.CopperLayers, ", "), b.Stackup.Thickness)
 	fmt.Fprintf(w, "Controller:  %s\n", iface.Controller)
 	fmt.Fprintf(w, "Memory:      %s\n", strings.Join(iface.Devices, ", "))
-	fmt.Fprintf(w, "Interface:   x%d in %d byte lanes, %d nets classified\n",
-		iface.Width, iface.Lanes, len(iface.Signals))
+	channels := ""
+	if len(iface.Channels) > 0 {
+		channels = fmt.Sprintf(" on %d channels (%s)", len(iface.Channels), strings.Join(iface.Channels, ", "))
+	}
+	fmt.Fprintf(w, "Interface:   x%d in %d byte lanes%s, %d nets classified\n",
+		iface.Width, iface.Lanes, channels, len(iface.Signals))
 	if proj.HasCustomRules {
 		fmt.Fprintf(w, "Rules:       %s plus a custom .kicad_dru\n", proj.Path)
 		fmt.Fprintln(w, "             Custom rules are not interpreted; clearance checks here use the")

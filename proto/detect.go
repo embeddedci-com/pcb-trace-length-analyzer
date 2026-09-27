@@ -241,13 +241,54 @@ func ethSignal(net string, res ...*regexp.Regexp) (sig, inst string, ok bool) {
 
 // ---- the interfaces ----
 
-var ddrRE = regexp.MustCompile(`^(DQ[0-9]+|DQS[0-9]*(_[PNTC])?|DQM[0-9]*|DM[0-9]*|A[0-9]+|BA[0-9]*|BG[0-9]*|CK[E]?[0-9]*(_[PNTC])?|CLK(_[PNTC])?|CS[N]?[0-9]*|RAS[N]?|CAS[N]?|WE[N]?|ACT[N]?|ODT[0-9]*|PAR|RESET[N]?|ALERT[N]?|TEN|ZQ)$`)
+var ddrRE = regexp.MustCompile(`^(DQ[0-9]+|(DQS|RDQS|WCK)[0-9]*(_[PNTC])?|DQM[0-9]*|DMI?[0-9]*|DBI[0-9]*|A[0-9]+|BA[0-9]*|BG[0-9]*|CA[0-9]+|CK[E]?[0-9]*(_[PNTC])?|CLK(_[PNTC])?|CS[N]?[0-9]*(_N)?|RAS[N]?|CAS[N]?|WE[N]?|ACT[N]?|ODT[0-9]*|ODT_CA|PAR|RESET[N]?(_N)?|ALERT[N]?|TEN|ZQ[0-9]*)$`)
+
+// LPDDR channel tokens: the _A of DQ0_A, the CHA_ of CHA_DQ0. The channel is
+// part of the signal, not an instance, or channel A and channel B would come
+// out as two half-size interfaces.
+var (
+	ddrChanTrail = regexp.MustCompile(`_(CH(ANNEL)?_?[A-D0-3]|[AB])$`)
+	ddrChanLead  = regexp.MustCompile(`^(CH(ANNEL)?_?[A-D0-3]|[AB])_`)
+	ddrChanInst  = regexp.MustCompile(`(^|_)(CH(ANNEL)?_?[A-D0-3]|[AB])$`)
+)
+
+// ddrSignal finds a DDR signal at the end of a net's leaf, looking past any
+// LPDDR channel token, and returns whatever came before it as the instance.
+// Like ethSignal, it looks for the signal first: "DQ0_A" would otherwise be
+// signal "A" on instance "DQ0".
+func ddrSignal(net string) (inst string, ok bool) {
+	up := ddrChanTrail.ReplaceAllString(strings.ToUpper(leaf(net)), "")
+	starts := []int{0}
+	for i := 0; i < len(up); i++ {
+		if up[i] == '_' || up[i] == '.' {
+			starts = append(starts, i+1)
+		}
+	}
+	for _, at := range starts {
+		if ddrRE.MatchString(ddrChanLead.ReplaceAllString(up[at:], "")) {
+			inst = strings.Trim(up[:at], "_.")
+			inst = strings.Trim(ddrChanInst.ReplaceAllString(inst, ""), "_.")
+			return inst, true
+		}
+	}
+	return "", false
+}
 
 func detectDDR(nets []string) []*Interface {
-	groups := byInstance(nets, func(s string) bool {
-		s = strings.TrimPrefix(s, "DDR_")
-		return ddrRE.MatchString(s)
-	})
+	groups := map[string][]string{}
+	for _, n := range nets {
+		inst, ok := ddrSignal(n)
+		if !ok {
+			continue
+		}
+		if inst == "" {
+			inst = strings.TrimSuffix(strings.TrimPrefix(scope(n), "/"), "/")
+		}
+		groups[inst] = append(groups[inst], n)
+	}
+	for k := range groups {
+		sort.Strings(groups[k])
+	}
 	var out []*Interface
 	for inst, ns := range groups {
 		// A handful of matching names is a coincidence; a DDR bus is dozens.

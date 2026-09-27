@@ -108,6 +108,9 @@ type Group struct {
 	// Lane is the byte lane, or -1.
 	Lane int
 
+	// Channel is the LPDDR channel the group belongs to, or empty.
+	Channel string
+
 	// Leg names the pad-to-pad span measured, as "U3->U4". Every member is
 	// measured over the same span so the comparison means something. For the
 	// address and command groups it runs from the controller to one device.
@@ -213,7 +216,7 @@ type Plan struct {
 	Chain *Chain
 
 	// clockTo is the clock pair's length from the controller to each device
-	// of the chain, for the checks across groups.
+	// of the chain, for the checks across groups, keyed by clockKey.
 	clockTo map[string]clockLength
 }
 
@@ -290,21 +293,42 @@ func BuildPlan(iface *Interface, m Measurer, r Rules) (*Plan, error) {
 		// which span each hop's lengths are compared over, so it has to be the
 		// board's order and not the designators'.
 		p.Chain = chainOf(iface, m, append(append([]string{}, clkNets...), acNets...))
-		p.clockTo = clockToDevices(p.Chain, meas, clkNets)
-		// One group per device, each measured from the controller, the way
-		// ST's length equalization sheet does: at every memory, each address
-		// and command line against the clock that reaches the same memory.
-		upstream := map[string]float64{}
-		var prev *leg
-		for _, l := range reachesOf(iface, p.Chain) {
-			g := buildFlyByGroup(iface, meas, r, l, prev, upstream, append(append([]string{}, clkNets...), acNets...))
-			if g != nil {
-				p.Groups = append(p.Groups, g)
-				for _, m := range g.Members {
-					upstream[m.Net] += m.Need
-				}
+		p.clockTo = map[string]clockLength{}
+		// Each LPDDR channel has its own command bus and its own clock, and
+		// one channel's commands are matched to its own clock only.
+		channels := iface.Channels
+		if len(channels) == 0 {
+			channels = []string{""}
+		}
+		for _, ch := range channels {
+			clk, ac := onChannel(iface, clkNets, ch), onChannel(iface, acNets, ch)
+			if len(ac) == 0 {
+				continue
 			}
-			prev = &l
+			for d, c := range clockToDevices(p.Chain, meas, clk) {
+				p.clockTo[clockKey(ch, d)] = c
+			}
+			nets := append(append([]string{}, clk...), ac...)
+			// One group per device, each measured from the controller, the
+			// way ST's length equalization sheet does: at every memory, each
+			// address and command line against the clock that reaches the
+			// same memory.
+			upstream := map[string]float64{}
+			var prev *leg
+			for _, l := range reachesOf(iface, p.Chain) {
+				g := buildFlyByGroup(iface, meas, r, l, prev, upstream, nets)
+				if g != nil {
+					if ch != "" {
+						g.Channel = ch
+						g.Name = "channel " + ch + " " + g.Name
+					}
+					p.Groups = append(p.Groups, g)
+					for _, m := range g.Members {
+						upstream[m.Net] += m.Need
+					}
+				}
+				prev = &l
+			}
 		}
 	}
 
@@ -329,6 +353,26 @@ func BuildPlan(iface *Interface, m Measurer, r Rules) (*Plan, error) {
 		}
 	}
 	return p, nil
+}
+
+// onChannel keeps the nets of one channel. Nets on no channel -- a shared
+// RESET_n brought in by IncludeControl -- go with every channel.
+func onChannel(iface *Interface, nets []string, ch string) []string {
+	var out []string
+	for _, n := range nets {
+		if s := iface.Signals[n]; s != nil && (s.Channel == ch || s.Channel == "") {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// clockKey is where Plan.clockTo keeps a channel's clock to a device.
+func clockKey(ch, device string) string {
+	if ch == "" {
+		return device
+	}
+	return ch + "/" + device
 }
 
 func laneNets(iface *Interface, lane int) []string {
@@ -524,6 +568,14 @@ func chainOf(iface *Interface, m Measurer, nets []string) *Chain {
 		}
 	}
 
+	// No net reaching more than two parts means there is no chain at all:
+	// LPDDR is point to point, controller to one device, and reporting its
+	// hops as unrouted would call a finished board unfinished.
+	if considered == 0 && len(nets) > 0 {
+		c.OrderFrom = "point to point: every address, command and clock net joins the controller to one device"
+		return c
+	}
+
 	// The hops, including the last device to its termination.
 	for i := 0; i+1 < len(c.Order); i++ {
 		c.Hops = append(c.Hops, Hop{From: c.Order[i], To: c.Order[i+1],
@@ -600,8 +652,14 @@ func buildGroup(iface *Interface, meas map[string]*netlen.Measure, r Rules, kind
 	g := &Group{
 		Kind:      kind,
 		Lane:      lane,
-		Name:      fmt.Sprintf("byte lane %d", lane),
+		Name:      iface.LaneName(lane),
 		Tolerance: r.DataToStrobe,
+	}
+	for _, net := range nets {
+		if s := iface.Signals[net]; s != nil && s.Channel != "" {
+			g.Channel = s.Channel
+			break
+		}
 	}
 	for _, net := range nets {
 		mm := meas[net]

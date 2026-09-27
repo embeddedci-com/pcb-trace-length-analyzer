@@ -161,6 +161,8 @@ export interface InterfaceInfo {
   presets_for_part?: string[]
   devices: string[]
   width_bits: number
+  /** LPDDR channels ("A", "B"); absent with one channel. */
+  channels?: string[]
   lanes: number
   nets_found: number
   unclassified?: string[]

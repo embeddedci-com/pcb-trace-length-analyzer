@@ -50,11 +50,11 @@ func (p *Plan) Checks() []Check {
 		}
 		sort.Strings(devices)
 		for _, d := range devices {
-			clk, ok := clockTo[d]
-			if !ok {
-				continue
-			}
 			for _, g := range lanes[d] {
+				clk, ok := clockTo[clockKey(g.Channel, d)]
+				if !ok {
+					continue
+				}
 				limit := p.Rules.StrobeToClock.LimitMM(psPerMM(g))
 				v := g.ReferenceLength - clk.length
 				out = append(out, Check{
@@ -81,7 +81,7 @@ func (p *Plan) Checks() []Check {
 			var names []string
 			for _, g := range gs {
 				sum += g.ReferenceLength
-				names = append(names, strings.TrimPrefix(g.Name, "byte lane "))
+				names = append(names, shortLane(g.Name))
 			}
 			chips = append(chips, chip{d, sum / float64(len(gs)), names})
 		}
@@ -184,4 +184,13 @@ func psPerMM(g *Group) float64 {
 		}
 	}
 	return 0
+}
+
+// shortLane is a byte lane's name as a list item: "2" for "byte lane 2",
+// "B0" for "channel B byte lane 0".
+func shortLane(name string) string {
+	if rest, ok := strings.CutPrefix(name, "channel "); ok {
+		return strings.Replace(rest, " byte lane ", "", 1)
+	}
+	return strings.TrimPrefix(name, "byte lane ")
 }

@@ -109,7 +109,13 @@ export function BoardSummary({ analysis }: { analysis: Analysis }) {
             <Fact label="Memory" value={(iface.devices ?? []).join(', ') || '—'} />
           ) : null}
           {iface.controller ? (
-            <Fact label="Interface" value={`x${iface.width_bits} in ${iface.lanes} byte lanes`} />
+            <Fact
+              label="Interface"
+              value={
+                `x${iface.width_bits} in ${iface.lanes} byte lanes` +
+                (iface.channels?.length ? ` on ${iface.channels.length} channels` : '')
+              }
+            />
           ) : null}
           <Fact label="Copper layers" value={`${board.copper_layers.length} (${board.copper_layers.join(', ')})`} />
           <Fact label="Stack-up" value={mm(board.stackup_mm)} />

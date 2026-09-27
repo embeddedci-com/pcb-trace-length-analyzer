@@ -103,6 +103,11 @@ type Signal struct {
 	// Controller is the reference of the device driving the interface.
 	Controller string
 
+	// Channel is the LPDDR channel the net belongs to ("A", "B", "0"...), or
+	// empty on an interface with one channel. Each channel has its own data
+	// bits, strobes, clock and command bus, and is matched on its own.
+	Channel string
+
 	// Why records how the net was classified, so a surprising grouping can be
 	// explained rather than argued with.
 	Why string
@@ -138,6 +143,14 @@ type Interface struct {
 
 	// Lanes is the number of byte lanes.
 	Lanes int
+
+	// Channels lists the LPDDR channels, in order, or nothing when the
+	// interface has one. Byte lanes are numbered across them: with two
+	// channels of two bytes, channel B's byte 0 is lane 2.
+	Channels []string
+
+	// laneStride is how many lane numbers each channel takes.
+	laneStride int
 
 	// Unclassified lists nets that look like they belong to the interface but
 	// could not be placed.
@@ -176,6 +189,19 @@ func (i *Interface) NetsWithRole(roles ...Role) []string {
 		names[k] = s.Net
 	}
 	return names
+}
+
+// LaneName is how a byte lane is called in a group name: "byte lane 2", or
+// "channel B byte lane 0" on an interface with channels.
+func (i *Interface) LaneName(lane int) string {
+	if len(i.Channels) == 0 || i.laneStride == 0 || lane < 0 {
+		return fmt.Sprintf("byte lane %d", lane)
+	}
+	ch := lane / i.laneStride
+	if ch >= len(i.Channels) {
+		return fmt.Sprintf("byte lane %d", lane)
+	}
+	return fmt.Sprintf("channel %s byte lane %d", i.Channels[ch], lane%i.laneStride)
 }
 
 // LaneOf returns the byte lane a net belongs to, or -1.
@@ -252,30 +278,83 @@ func splitIndex(name string) (stem string, idx int) {
 	return strings.TrimRight(m[1], "_"), n
 }
 
+// LPDDR4 and LPDDR5 have two channels per die, and JEDEC names every pin with
+// the channel after it: DQ0_A, CA3_B, CK_t_A, DQS1_c_B. Schematics also put it
+// in front ("CHA_DQ0", "A_DQ0") or spell it out ("DQ0_CH1"). A lone _A or _B
+// is only a guess at this point -- i.MX6 writes active low as "CS0_B" -- so
+// Classify keeps a channel only when the data bits themselves come in more
+// than one.
+var (
+	chanLeadRE  = regexp.MustCompile(`^CH(?:ANNEL)?_?([A-D0-3])_(.+)$`)
+	chanTrailRE = regexp.MustCompile(`^(.+?)_CH(?:ANNEL)?_?([A-D0-3])$`)
+	letterLead  = regexp.MustCompile(`^([AB])_(.+)$`)
+	letterTrail = regexp.MustCompile(`^(.+)_([AB])$`)
+)
+
+func splitChannel(name string) (rest, ch string) {
+	if m := chanLeadRE.FindStringSubmatch(name); m != nil {
+		return m[2], m[1]
+	}
+	if m := chanTrailRE.FindStringSubmatch(name); m != nil {
+		return m[1], m[2]
+	}
+	if m := letterLead.FindStringSubmatch(name); m != nil {
+		return m[2], m[1]
+	}
+	if m := letterTrail.FindStringSubmatch(name); m != nil {
+		return m[1], m[2]
+	}
+	return name, ""
+}
+
+// activeLowRE is an active-low marker on a single-ended line: the _n of
+// LPDDR's CS_n and RESET_n, and TI's DDR0_CS0_n. A differential half is never
+// passed here, so the _N of CK_N is not at risk.
+var activeLowRE = regexp.MustCompile(`^(.+?)(?:_N|#)$`)
+
 // classifyName places a signal from its name alone.
 func classifyName(net string) (role Role, stem string, idx int, pol Polarity) {
-	name := signalName(net)
+	role, stem, idx, pol, _ = parseName(net)
+	return
+}
+
+// parseName is classifyName plus the channel the name carries, if any.
+func parseName(net string) (role Role, stem string, idx int, pol Polarity, ch string) {
+	name, ch := splitChannel(signalName(net))
 	base, pol := splitPolarity(name)
+	if pol == Single {
+		if m := activeLowRE.FindStringSubmatch(base); m != nil {
+			base = m[1]
+		}
+	}
 	stem, idx = splitIndex(base)
+	role, stem = roleOf(stem)
+	return role, stem, idx, pol, ch
+}
+
+func roleOf(stem string) (Role, string) {
 
 	switch stem {
 	case "DQ", "D":
-		return RoleData, stem, idx, pol
-	case "DQS", "RDQS", "DQSU", "DQSL":
-		return RoleStrobe, "DQS", idx, pol
-	case "CK", "CLK", "WCK", "CKT", "CKC":
-		return RoleClock, "CK", idx, pol
+		return RoleData, stem
+	// WCK is LPDDR5's write clock. It runs per byte like a strobe and is
+	// matched with its byte lane, not with the command bus.
+	case "DQS", "RDQS", "DQSU", "DQSL", "WCK":
+		return RoleStrobe, "DQS"
+	case "CK", "CLK", "CKT", "CKC":
+		return RoleClock, "CK"
 	case "DM", "DQM", "DMI", "DBI", "UDM", "LDM", "DQSDM":
-		return RoleDataMask, "DM", idx, pol
+		return RoleDataMask, "DM"
 	case "A", "ADDR", "MA", "BA", "BG", "BANK":
-		return RoleAddress, stem, idx, pol
+		return RoleAddress, stem
 	case "RAS", "RASN", "CAS", "CASN", "WE", "WEN", "ACT", "ACTN",
 		"CS", "CSN", "CKE", "ODT", "PAR", "ALERT", "ALERTN", "TEN", "CA":
-		return RoleCommand, stem, idx, pol
-	case "RESET", "RESETN", "RST", "RSTN", "ZQ", "VREF", "MIR", "CAI", "LBDQS":
-		return RoleControl, stem, idx, pol
+		return RoleCommand, stem
+	// ODT_CA is an LPDDR4 strap, tied rather than driven.
+	case "RESET", "RESETN", "RST", "RSTN", "ZQ", "VREF", "MIR", "CAI", "LBDQS", "ODT_CA", "ODTCA":
+		return RoleControl, stem
 	}
-	return RoleUnknown, stem, idx, pol
+	return RoleUnknown, stem
 }
 
 // ---- classification ----
@@ -319,6 +398,7 @@ func Classify(b *board.Board, opt Options) (*Interface, error) {
 		stem string
 		idx  int
 		pol  Polarity
+		ch   string
 		refs []string
 	}
 	var cands []cand
@@ -334,7 +414,7 @@ func Classify(b *board.Board, opt Options) (*Interface, error) {
 		if !inScope(net) {
 			continue
 		}
-		role, stem, idx, pol := classifyName(net)
+		role, stem, idx, pol, ch := parseName(net)
 		if role == RoleUnknown {
 			continue
 		}
@@ -352,10 +432,46 @@ func Classify(b *board.Board, opt Options) (*Interface, error) {
 			refCount[r]++
 		}
 		sort.Strings(list)
-		cands = append(cands, cand{net, role, stem, idx, pol, list})
+		cands = append(cands, cand{net, role, stem, idx, pol, ch, list})
 	}
 	if len(cands) == 0 {
 		return nil, fmt.Errorf("ddr: no DDR-looking nets found (prefix %q)", opt.NetPrefix)
+	}
+
+	// Channels are real only where the data bits come in more than one: that
+	// is what tells LPDDR's DQ0_A and DQ0_B apart from an active-low CS0_B on
+	// a board with one channel. Everything else is on no channel.
+	chans := map[string]bool{}
+	for _, c := range cands {
+		if c.role == RoleData && c.ch != "" {
+			chans[c.ch] = true
+		}
+	}
+	if len(chans) < 2 {
+		chans = map[string]bool{}
+	}
+	for ch := range chans {
+		iface.Channels = append(iface.Channels, ch)
+	}
+	sort.Strings(iface.Channels)
+	chanOrd := map[string]int{}
+	for k, ch := range iface.Channels {
+		chanOrd[ch] = k
+	}
+	for k := range cands {
+		if !chans[cands[k].ch] {
+			cands[k].ch = ""
+		}
+	}
+	// Lanes are numbered across the channels, each taking as many numbers as
+	// the widest one needs, so channel B's byte 0 follows channel A's last.
+	for _, c := range cands {
+		if c.role == RoleData && c.idx >= 0 && c.idx/LaneWidth+1 > iface.laneStride {
+			iface.laneStride = c.idx/LaneWidth + 1
+		}
+	}
+	laneOf := func(ch string, byteIdx int) int {
+		return chanOrd[ch]*iface.laneStride + byteIdx
 	}
 
 	// The controller is the device on the most DDR nets: it touches every one,
@@ -410,7 +526,7 @@ func Classify(b *board.Board, opt Options) (*Interface, error) {
 		if c.role != RoleData || c.idx < 0 {
 			continue
 		}
-		lane := c.idx / LaneWidth
+		lane := laneOf(c.ch, c.idx/LaneWidth)
 		for _, r := range c.refs {
 			if r == ctrl {
 				continue
@@ -430,17 +546,26 @@ func Classify(b *board.Board, opt Options) (*Interface, error) {
 			Polarity:   c.pol,
 			Devices:    c.refs,
 			Controller: ctrl,
+			Channel:    c.ch,
+		}
+		onChannel := ""
+		if c.ch != "" {
+			onChannel = " of channel " + c.ch
 		}
 		switch c.role {
 		case RoleData:
 			if c.idx >= 0 {
-				s.Lane = c.idx / LaneWidth
-				s.Why = fmt.Sprintf("bit %d is in byte lane %d", c.idx, s.Lane)
+				s.Lane = laneOf(c.ch, c.idx/LaneWidth)
+				s.Why = fmt.Sprintf("bit %d%s is in byte lane %d", c.idx, onChannel, s.Lane)
 			}
 		case RoleStrobe, RoleDataMask:
 			// Attach to the lane of the device this net lands on. Where that
 			// device owns more than one lane -- a x16 device carries two -- the
 			// net's own index picks between them.
+			want := -1
+			if c.idx >= 0 {
+				want = laneOf(c.ch, c.idx)
+			}
 			for _, r := range c.refs {
 				if r == ctrl {
 					continue
@@ -455,23 +580,23 @@ func Classify(b *board.Board, opt Options) (*Interface, error) {
 					s.Why = fmt.Sprintf("lands on %s, which carries byte lane %d", r, s.Lane)
 					break
 				}
-				if c.idx >= 0 && c.idx < len(lanes)+lanes[0]+LaneWidth {
+				if want >= 0 && c.idx < len(lanes)+lanes[0]+LaneWidth {
 					// Strobe and mask numbering runs in step with lane
-					// numbering across the whole interface, so the index is
-					// the lane when the device owns several.
-					if slicesContainsInt(lanes, c.idx) {
-						s.Lane = c.idx
-						s.Why = fmt.Sprintf("index %d matches byte lane %d on %s", c.idx, c.idx, r)
+					// numbering across the whole interface (or the channel),
+					// so the index is the lane when the device owns several.
+					if slicesContainsInt(lanes, want) {
+						s.Lane = want
+						s.Why = fmt.Sprintf("index %d%s matches byte lane %d on %s", c.idx, onChannel, want, r)
 						break
 					}
 				}
 			}
-			if s.Lane < 0 && c.idx >= 0 {
-				s.Lane = c.idx
-				s.Why = fmt.Sprintf("assumed byte lane %d from the index; no device gave a stronger clue", c.idx)
+			if s.Lane < 0 && want >= 0 {
+				s.Lane = want
+				s.Why = fmt.Sprintf("assumed byte lane %d from the index%s; no device gave a stronger clue", want, onChannel)
 			}
 		case RoleClock, RoleAddress, RoleCommand, RoleControl:
-			s.Why = fmt.Sprintf("%s line, shared by %d device(s)", c.role, len(c.refs)-1)
+			s.Why = fmt.Sprintf("%s line%s, shared by %d device(s)", c.role, onChannel, len(c.refs)-1)
 		}
 		if l, ok := opt.LaneOfNet[c.net]; ok {
 			s.Lane = l
@@ -481,14 +606,30 @@ func Classify(b *board.Board, opt Options) (*Interface, error) {
 	}
 
 	// Pair up the differential halves.
+	pairKey := func(s *Signal) string {
+		name, _ := splitChannel(signalName(s.Net))
+		base, _ := splitPolarity(name)
+		return fmt.Sprintf("%s/%d/%d/%s", base, s.Role, s.Lane, s.Channel)
+	}
 	byBase := map[string][]*Signal{}
 	for _, s := range iface.Signals {
 		if s.Polarity == Single {
 			continue
 		}
-		base, _ := splitPolarity(signalName(s.Net))
-		key := fmt.Sprintf("%s/%d/%d", base, s.Role, s.Lane)
-		byBase[key] = append(byBase[key], s)
+		byBase[pairKey(s)] = append(byBase[pairKey(s)], s)
+	}
+	// TI names the true half with no suffix at all: DDR0_CK0 and DDR0_CK0_n,
+	// DDR0_DQS0 and DDR0_DQS0_n. A complement on its own takes the plain
+	// strobe or clock of the same name as its true half.
+	for _, s := range iface.Signals {
+		if s.Polarity != Single || (s.Role != RoleStrobe && s.Role != RoleClock) {
+			continue
+		}
+		key := pairKey(s)
+		if g := byBase[key]; len(g) == 1 && g[0].Polarity == Negative {
+			s.Polarity = Positive
+			byBase[key] = append(g, s)
+		}
 	}
 	for _, group := range byBase {
 		if len(group) != 2 {
@@ -504,11 +645,11 @@ func Classify(b *board.Board, opt Options) (*Interface, error) {
 	}
 
 	// Width and lane count from the data bits actually present.
-	bits := map[int]bool{}
+	bits := map[string]bool{}
 	lanes := map[int]bool{}
 	for _, s := range iface.Signals {
 		if s.Role == RoleData && s.Index >= 0 {
-			bits[s.Index] = true
+			bits[fmt.Sprintf("%s/%d", s.Channel, s.Index)] = true
 		}
 		if s.Lane >= 0 {
 			lanes[s.Lane] = true

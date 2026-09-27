@@ -355,9 +355,11 @@ type InterfaceInfo struct {
 	// chip's: the defaults are one vendor's figures, not every vendor's.
 	PresetsForPart []string `json:"presets_for_part,omitempty"`
 
-	Devices      []string `json:"devices"`
-	WidthBits    int      `json:"width_bits"`
-	Lanes        int      `json:"lanes"`
+	Devices   []string `json:"devices"`
+	WidthBits int      `json:"width_bits"`
+	Lanes     int      `json:"lanes"`
+	// Channels are the LPDDR channels ("A", "B"), absent with one channel.
+	Channels     []string `json:"channels,omitempty"`
 	NetsFound    int      `json:"nets_found"`
 	Unclassified []string `json:"unclassified,omitempty"`
 	Notes        []string `json:"notes,omitempty"`
@@ -1140,7 +1142,7 @@ func analyse(b *board.Board, proj *board.Project, filename string, p Params, sv 
 	a.Board = boardInfo(b, proj, filename)
 	a.Interface = InterfaceInfo{
 		NetPrefix: prefix, Controller: iface.Controller, Devices: iface.Devices,
-		WidthBits: iface.Width, Lanes: iface.Lanes, NetsFound: len(iface.Signals),
+		WidthBits: iface.Width, Lanes: iface.Lanes, Channels: iface.Channels, NetsFound: len(iface.Signals),
 		Unclassified: iface.Unclassified, Notes: iface.Notes,
 	}
 	if fp := b.Footprint(iface.Controller); fp != nil {

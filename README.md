@@ -149,6 +149,14 @@ stay single-ended.
 devices in series, and equal total length with unequal legs still fails write
 levelling, so each leg is its own group.
 
+**LPDDR4 and LPDDR5 are matched per channel.** Each channel has its own `DQ0`,
+its own command bus and its own clock, so `DQ0_A` and `DQ0_B` are different
+byte lanes and channel B's `CA` lines are matched to `CK_t_B`/`CK_c_B` only.
+The channel is read from the JEDEC suffix (`DQ0_A`) or a prefix (`CHA_DQ0`,
+`A_DQ0`), and kept only when the data bits come in more than one channel, so an
+i.MX6 active-low `CS0_B` is not taken for a channel. LPDDR is point to point, so
+it reports no fly-by chain. LPDDR5's `WCK` is matched with its byte lane.
+
 Lengths are reported both as millimetres, which is what you check in pcbnew, and
 as picoseconds, computed per layer from the stackup. A net that changes layers
 mid-run — which every fly-by net on the demo board does — is mismatched by about
