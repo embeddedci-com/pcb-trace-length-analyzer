@@ -158,6 +158,14 @@ func TestMilsAreConvertedExactly(t *testing.T) {
 	if eight.DataToStrobe.PS != 16 || eight.StrobeToClock.PS != 40 || eight.IntraPair.PS != 1 {
 		t.Errorf("rk3588 8-layer: %+v", eight)
 	}
+	// TI's DDR4 tables give 2, 0.4 and 4 ps, but that ps is a normalized
+	// length of 5 mil, not a delay: the preset holds TI's own mils, so the
+	// stackup cannot turn them into something the guide did not say.
+	ti, _ := PresetByID("am62x-am64x-ddr4")
+	if math.Abs(ti.DataToStrobe.MM-10*0.0254) > 1e-9 || math.Abs(ti.IntraPair.MM-2*0.0254) > 1e-9 ||
+		math.Abs(ti.AddressToClock.MM-20*0.0254) > 1e-9 || !ti.StrobeToClock.Zero() {
+		t.Errorf("ti ddr4: %+v, want 10, 2 and 20 mil and no strobe to clock limit", ti)
+	}
 	lp3, _ := PresetByID("rk3399-lpddr3")
 	if lp3.DataToStrobe.PS != 5 || lp3.AddressToClock.PS != 5 || lp3.StrobeToClock.PS != 150 {
 		t.Errorf("rk3399 lpddr3: %+v", lp3)
@@ -305,8 +313,9 @@ func TestPresetsForPart(t *testing.T) {
 		{"MIMX8MN6CVTIZAA", []string{"imx93-imx8mp-imx8mn-lpddr4", "imx8mn-ddr4"}},
 		{"MIMX8MM6DVTLZAA", []string{"imx8m-lpddr4", "imx8m-ddr3l"}},
 		{"MIMX9352CVVXK", []string{"imx93-imx8mp-imx8mn-lpddr4"}},
-		{"AM6254", []string{"am62x-lpddr4"}},
-		{"AM6442", []string{"am64x-lpddr4"}},
+		{"AM6254", []string{"am62x-lpddr4", "am62x-am64x-ddr4"}},
+		{"AM6442", []string{"am64x-lpddr4", "am62x-am64x-ddr4"}},
+		{"AM2434", []string{"am64x-lpddr4", "am62x-am64x-ddr4"}},
 		{"ATSAMA5D27C-CU", []string{"sama5d2-ddr3l"}},
 		// Written the way a schematic often does, with punctuation.
 		{"i.MX 8M Nano", []string{"imx93-imx8mp-imx8mn-lpddr4", "imx8mn-ddr4"}},

@@ -1243,6 +1243,67 @@ export const PRESET_CATALOG: Preset[] = [
     ]
   },
   {
+    "id": "am62x-am64x-ddr4",
+    "name": "AM62x, AM62Lx, AM64x and AM243x, DDR4",
+    "vendor": "Texas Instruments",
+    "parts": [
+      "AM62x",
+      "AM62Lx",
+      "AM625",
+      "AM623",
+      "AM64x",
+      "AM243x",
+      "AM6442",
+      "AM2434"
+    ],
+    "memory": "DDR4",
+    "source": "TI AM62x, AM62Lx DDR Board Design and Layout Guidelines SPRAD06C (2025-03), tables 2-6 and 2-7, and AM64x\\AM243x DDR Board Design and Layout Guidelines SPRACU1A (2021-06), tables 2-6 and 2-7",
+    "url": "https://www.ti.com/lit/pdf/sprad06",
+    "note": "Both guides give the same DDR4 tables, for DDR4-1600 only. They give ps as a normalized length, 1 ps to 5 mil of stripline, so these are TI's figures times five: microstrip is meant to be divided by 1.1 first, which this tool does not do. Address and command use the 4 ps total from the processor to each device; each fly-by segment is also held to 3 ps on its own. The pair limit is the strobe pair's 0.4 ps, tighter than the clock pair's 0.8 ps total. The guides set no strobe against clock limit, so the tool's default stands there.",
+    "params": {
+      "data_to_strobe_mm": 0.254,
+      "data_to_strobe_ps": 0,
+      "intra_pair_mm": 0.0508,
+      "intra_pair_ps": 0,
+      "address_to_clock_mm": 0.508,
+      "address_to_clock_ps": 0,
+      "strobe_to_clock_mm": 12.065,
+      "strobe_to_clock_ps": 0,
+      "max_chip_delta_mm": 35.0012,
+      "clock_offset_percent": 0
+    },
+    "unstated": [
+      "strobe_to_clock_mm",
+      "max_chip_delta_mm"
+    ],
+    "impedance": [
+      {
+        "chip": "AM62x",
+        "targets": [
+          {
+            "kind": "ddr",
+            "label": "DDR memory",
+            "single_ended_ohms": 40,
+            "diff_ohms": 80,
+            "source": "TI SPRAD06C (2025-03), table 1-1"
+          }
+        ]
+      },
+      {
+        "chip": "AM64x/AM243x",
+        "targets": [
+          {
+            "kind": "ddr",
+            "label": "DDR memory",
+            "single_ended_ohms": 40,
+            "diff_ohms": 80,
+            "source": "TI SPRACU1A (2021-06), table 1-1"
+          }
+        ]
+      }
+    ]
+  },
+  {
     "id": "sama5d3-ddr2",
     "name": "SAMA5D3, DDR2/LPDDR2",
     "vendor": "Microchip",

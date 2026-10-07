@@ -356,6 +356,26 @@ var presets = []Preset{
 		AddressToClock: ps(3),
 	},
 	{
+		ID:     "am62x-am64x-ddr4",
+		Name:   "AM62x, AM62Lx, AM64x and AM243x, DDR4",
+		Vendor: "Texas Instruments",
+		Parts:  []string{"AM62x", "AM62Lx", "AM625", "AM623", "AM64x", "AM243x", "AM6442", "AM2434"},
+		match:  `AM62|AM64|AM243`,
+		Memory: "DDR4",
+		Source: "TI AM62x, AM62Lx DDR Board Design and Layout Guidelines SPRAD06C (2025-03), tables 2-6 and 2-7, " +
+			"and AM64x\\AM243x DDR Board Design and Layout Guidelines SPRACU1A (2021-06), tables 2-6 and 2-7",
+		URL: "https://www.ti.com/lit/pdf/sprad06",
+		Note: "Both guides give the same DDR4 tables, for DDR4-1600 only. They give ps as a normalized length, " +
+			"1 ps to 5 mil of stripline, so these are TI's figures times five: microstrip is meant to be divided " +
+			"by 1.1 first, which this tool does not do. Address and command use the 4 ps total from the processor " +
+			"to each device; each fly-by segment is also held to 3 ps on its own. The pair limit is the strobe " +
+			"pair's 0.4 ps, tighter than the clock pair's 0.8 ps total. The guides set no strobe against clock " +
+			"limit, so the tool's default stands there.",
+		DataToStrobe:   mils(10),
+		IntraPair:      mils(2),
+		AddressToClock: mils(20),
+	},
+	{
 		ID:     "sama5d3-ddr2",
 		Name:   "SAMA5D3, DDR2/LPDDR2",
 		Vendor: "Microchip",
